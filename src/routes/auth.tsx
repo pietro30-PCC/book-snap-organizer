@@ -76,7 +76,7 @@ function Autenticacao() {
   }
 
   return (
-    <div className="aurora relative grid min-h-screen place-items-center px-4 py-12">
+    <div className="aurora relative grid min-h-screen place-items-center bg-linear-to-b from-secondary/50 via-background to-accent/10 px-4 py-12">
       <Link
         to="/"
         className="absolute left-5 top-5 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/70 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
