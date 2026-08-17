@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAlunosRouteImport } from './routes/_authenticated/alunos'
 import { Route as AuthenticatedEmprestimosRouteImport } from './routes/_authenticated/emprestimos'
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
@@ -43,12 +49,14 @@ const AuthenticatedEmprestimosRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/alunos': typeof AuthenticatedAlunosRoute
   '/emprestimos': typeof AuthenticatedEmprestimosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/alunos': typeof AuthenticatedAlunosRoute
   '/emprestimos': typeof AuthenticatedEmprestimosRoute
@@ -57,19 +65,21 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/alunos': typeof AuthenticatedAlunosRoute
   '/_authenticated/emprestimos': typeof AuthenticatedEmprestimosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/alunos' | '/emprestimos'
+  fullPaths: '/' | '/auth' | '/admin' | '/alunos' | '/emprestimos'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/alunos' | '/emprestimos'
+  to: '/' | '/auth' | '/admin' | '/alunos' | '/emprestimos'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/auth'
     | '/_authenticated/admin'
     | '/_authenticated/alunos'
     | '/_authenticated/emprestimos'
@@ -78,6 +88,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -94,6 +105,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/admin': {
@@ -138,6 +156,7 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
