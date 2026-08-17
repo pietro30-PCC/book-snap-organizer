@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { criarAluno, listarAlunos, removerAluno } from "@/lib/biblioteca";
 
-export const Route = createFileRoute("/alunos")({
+export const Route = createFileRoute("/_authenticated/alunos")({
   head: () => ({
     meta: [
       { title: "Cadastro de Alunos | Biblioteca Escolar" },

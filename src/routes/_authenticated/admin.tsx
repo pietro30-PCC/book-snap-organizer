@@ -16,7 +16,7 @@ import { criarLivro, enviarCapa, listarLivros, removerLivro, type Livro } from "
 import { prepararFoto } from "@/lib/imagem";
 import { lerCapaLivro } from "@/lib/ocr.functions";
 
-export const Route = createFileRoute("/admin")({
+export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({
     meta: [
       { title: "Painel do Administrador | Biblioteca Escolar" },
