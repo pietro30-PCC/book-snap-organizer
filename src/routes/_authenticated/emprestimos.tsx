@@ -24,7 +24,7 @@ import {
   type Livro,
 } from "@/lib/biblioteca";
 
-export const Route = createFileRoute("/emprestimos")({
+export const Route = createFileRoute("/_authenticated/emprestimos")({
   head: () => ({
     meta: [
       { title: "Empréstimos | Biblioteca Escolar" },
