@@ -10,63 +10,69 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AdminRouteImport } from './routes/admin'
-import { Route as AlunosRouteImport } from './routes/alunos'
-import { Route as EmprestimosRouteImport } from './routes/emprestimos'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedAlunosRouteImport } from './routes/_authenticated/alunos'
+import { Route as AuthenticatedEmprestimosRouteImport } from './routes/_authenticated/emprestimos'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/_authenticated/admin',
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AlunosRoute = AlunosRouteImport.update({
-  id: '/alunos',
+const AuthenticatedAlunosRoute = AuthenticatedAlunosRouteImport.update({
+  id: '/_authenticated/alunos',
   path: '/alunos',
   getParentRoute: () => rootRouteImport,
 } as any)
-const EmprestimosRoute = EmprestimosRouteImport.update({
-  id: '/emprestimos',
-  path: '/emprestimos',
-  getParentRoute: () => rootRouteImport,
-} as any)
+const AuthenticatedEmprestimosRoute =
+  AuthenticatedEmprestimosRouteImport.update({
+    id: '/_authenticated/emprestimos',
+    path: '/emprestimos',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/alunos': typeof AlunosRoute
-  '/emprestimos': typeof EmprestimosRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/alunos': typeof AuthenticatedAlunosRoute
+  '/emprestimos': typeof AuthenticatedEmprestimosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/alunos': typeof AlunosRoute
-  '/emprestimos': typeof EmprestimosRoute
+  '/admin': typeof AuthenticatedAdminRoute
+  '/alunos': typeof AuthenticatedAlunosRoute
+  '/emprestimos': typeof AuthenticatedEmprestimosRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
-  '/alunos': typeof AlunosRoute
-  '/emprestimos': typeof EmprestimosRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/alunos': typeof AuthenticatedAlunosRoute
+  '/_authenticated/emprestimos': typeof AuthenticatedEmprestimosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths: '/' | '/admin' | '/alunos' | '/emprestimos'
   fileRoutesByTo: FileRoutesByTo
   to: '/' | '/admin' | '/alunos' | '/emprestimos'
-  id: '__root__' | '/' | '/admin' | '/alunos' | '/emprestimos'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated/admin'
+    | '/_authenticated/alunos'
+    | '/_authenticated/emprestimos'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
-  AlunosRoute: typeof AlunosRoute
-  EmprestimosRoute: typeof EmprestimosRoute
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAlunosRoute: typeof AuthenticatedAlunosRoute
+  AuthenticatedEmprestimosRoute: typeof AuthenticatedEmprestimosRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -78,25 +84,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin': {
-      id: '/admin'
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
       path: '/admin'
       fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/alunos': {
-      id: '/alunos'
+    '/_authenticated/alunos': {
+      id: '/_authenticated/alunos'
       path: '/alunos'
       fullPath: '/alunos'
-      preLoaderRoute: typeof AlunosRouteImport
+      preLoaderRoute: typeof AuthenticatedAlunosRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/emprestimos': {
-      id: '/emprestimos'
+    '/_authenticated/emprestimos': {
+      id: '/_authenticated/emprestimos'
       path: '/emprestimos'
       fullPath: '/emprestimos'
-      preLoaderRoute: typeof EmprestimosRouteImport
+      preLoaderRoute: typeof AuthenticatedEmprestimosRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -104,9 +110,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
-  AlunosRoute: AlunosRoute,
-  EmprestimosRoute: EmprestimosRoute,
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAlunosRoute: AuthenticatedAlunosRoute,
+  AuthenticatedEmprestimosRoute: AuthenticatedEmprestimosRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
