@@ -1,7 +1,7 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { BookOpen, LayoutDashboard, Library, LogIn, LogOut, Users } from "lucide-react";
+import { BookOpen, Images, LayoutDashboard, Library, LogIn, LogOut, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 const itens = [
   { to: "/", rotulo: "Catálogo", icone: Library },
   { to: "/admin", rotulo: "Painel", icone: LayoutDashboard },
+  { to: "/lote", rotulo: "Lote", icone: Images },
   { to: "/alunos", rotulo: "Alunos", icone: Users },
   { to: "/emprestimos", rotulo: "Empréstimos", icone: BookOpen },
 ] as const;

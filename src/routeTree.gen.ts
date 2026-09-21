@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAlunosRouteImport } from './routes/_authenticated/alunos'
 import { Route as AuthenticatedEmprestimosRouteImport } from './routes/_authenticated/emprestimos'
+import { Route as AuthenticatedLoteRouteImport } from './routes/_authenticated/lote'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +47,11 @@ const AuthenticatedEmprestimosRoute =
     path: '/emprestimos',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedLoteRoute = AuthenticatedLoteRouteImport.update({
+  id: '/lote',
+  path: '/lote',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AuthenticatedAdminRoute
   '/alunos': typeof AuthenticatedAlunosRoute
   '/emprestimos': typeof AuthenticatedEmprestimosRoute
+  '/lote': typeof AuthenticatedLoteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthenticatedAdminRoute
   '/alunos': typeof AuthenticatedAlunosRoute
   '/emprestimos': typeof AuthenticatedEmprestimosRoute
+  '/lote': typeof AuthenticatedLoteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -69,12 +77,13 @@ export interface FileRoutesById {
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/alunos': typeof AuthenticatedAlunosRoute
   '/_authenticated/emprestimos': typeof AuthenticatedEmprestimosRoute
+  '/_authenticated/lote': typeof AuthenticatedLoteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/admin' | '/alunos' | '/emprestimos'
+  fullPaths: '/' | '/auth' | '/admin' | '/alunos' | '/emprestimos' | '/lote'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/admin' | '/alunos' | '/emprestimos'
+  to: '/' | '/auth' | '/admin' | '/alunos' | '/emprestimos' | '/lote'
   id:
     | '__root__'
     | '/'
@@ -83,6 +92,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin'
     | '/_authenticated/alunos'
     | '/_authenticated/emprestimos'
+    | '/_authenticated/lote'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -135,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedEmprestimosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/lote': {
+      id: '/_authenticated/lote'
+      path: '/lote'
+      fullPath: '/lote'
+      preLoaderRoute: typeof AuthenticatedLoteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -142,12 +159,14 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedAlunosRoute: typeof AuthenticatedAlunosRoute
   AuthenticatedEmprestimosRoute: typeof AuthenticatedEmprestimosRoute
+  AuthenticatedLoteRoute: typeof AuthenticatedLoteRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedAlunosRoute: AuthenticatedAlunosRoute,
   AuthenticatedEmprestimosRoute: AuthenticatedEmprestimosRoute,
+  AuthenticatedLoteRoute: AuthenticatedLoteRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
