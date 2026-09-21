@@ -43,22 +43,28 @@ export type Database = {
           aluno_id: string
           data_devolucao: string | null
           data_emprestimo: string
+          data_prevista: string
           id: string
           livro_id: string
+          observacao: string | null
         }
         Insert: {
           aluno_id: string
           data_devolucao?: string | null
           data_emprestimo?: string
+          data_prevista?: string
           id?: string
           livro_id: string
+          observacao?: string | null
         }
         Update: {
           aluno_id?: string
           data_devolucao?: string | null
           data_emprestimo?: string
+          data_prevista?: string
           id?: string
           livro_id?: string
+          observacao?: string | null
         }
         Relationships: [
           {
