@@ -1,0 +1,1 @@
+ALTER TABLE public.livros ADD COLUMN IF NOT EXISTS descricao text;
