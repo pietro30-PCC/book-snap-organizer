@@ -90,6 +90,7 @@ export type Database = {
           categoria: string
           codigo: string
           created_at: string
+          descricao: string | null
           disponiveis: number
           id: string
           isbn: string | null
@@ -102,6 +103,7 @@ export type Database = {
           categoria?: string
           codigo?: string
           created_at?: string
+          descricao?: string | null
           disponiveis?: number
           id?: string
           isbn?: string | null
@@ -114,6 +116,7 @@ export type Database = {
           categoria?: string
           codigo?: string
           created_at?: string
+          descricao?: string | null
           disponiveis?: number
           id?: string
           isbn?: string | null

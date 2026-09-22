@@ -10,6 +10,7 @@ export type Livro = {
   quantidade: number;
   disponiveis: number;
   capa_url: string | null;
+  descricao: string | null;
   created_at: string;
 };
 
@@ -107,6 +108,7 @@ export type EntradaLivro = {
   isbn: string;
   quantidade: number;
   capa_url: string | null;
+  descricao?: string;
 };
 
 export async function criarLivro(entrada: EntradaLivro): Promise<Livro> {
@@ -122,6 +124,7 @@ export async function criarLivro(entrada: EntradaLivro): Promise<Livro> {
         quantidade,
         disponiveis: quantidade,
         capa_url: entrada.capa_url,
+        descricao: entrada.descricao?.trim() || null,
       })
       .select()
       .single(),
@@ -141,9 +144,20 @@ export async function criarLivrosEmLote(entradas: EntradaLivro[]): Promise<Livro
       quantidade,
       disponiveis: quantidade,
       capa_url: e.capa_url,
+      descricao: e.descricao?.trim() || null,
     };
   });
   return checar(await supabase.from("livros").insert(linhas).select()) as Livro[];
+}
+
+/** Atualiza campos de um livro (usado para salvar a descrição gerada). */
+export async function atualizarLivro(
+  id: string,
+  campos: Partial<Pick<Livro, "titulo" | "autor" | "categoria" | "isbn" | "descricao">>,
+): Promise<Livro> {
+  return checar(
+    await supabase.from("livros").update(campos).eq("id", id).select().single(),
+  ) as Livro;
 }
 
 export async function removerLivro(id: string): Promise<void> {
