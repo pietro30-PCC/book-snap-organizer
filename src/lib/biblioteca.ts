@@ -10,6 +10,7 @@ export type Livro = {
   quantidade: number;
   disponiveis: number;
   capa_url: string | null;
+  descricao: string | null;
   created_at: string;
 };
 

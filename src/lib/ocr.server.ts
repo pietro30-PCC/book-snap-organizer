@@ -3,19 +3,21 @@ export type LeituraCapa = {
   autor: string;
   categoria: string;
   isbn: string;
+  descricao: string;
 };
 
 const MODELO = "google/gemini-3.5-flash";
 
 const INSTRUCAO = `Você analisa a foto da capa (ou contracapa) de um livro.
 Extraia os dados visíveis e responda APENAS com um JSON válido no formato:
-{"titulo":"","autor":"","categoria":"","isbn":""}
+{"titulo":"","autor":"","categoria":"","isbn":"","descricao":""}
 Regras:
 - "titulo": título principal do livro, sem subtítulo quando for muito longo.
 - "autor": nome do autor ou autores separados por vírgula. Vazio se não aparecer.
 - "categoria": um gênero curto em português (ex: Romance, Didático, Infantil, História, Ciências, Literatura Brasileira).
 - "isbn": apenas dígitos do ISBN se estiver visível (inclusive abaixo do código de barras), senão vazio.
-Não invente informações que não estejam na imagem, exceto a categoria que pode ser inferida.`;
+- "descricao": resumo curto do livro em português do Brasil, de 2 a 3 frases, adequado ao catálogo de uma biblioteca escolar. Use o texto da contracapa quando visível; caso contrário, use o que você souber sobre a obra. Vazio se não tiver ideia do que se trata.
+Não invente informações que não estejam na imagem, exceto a categoria e a descrição, que podem ser inferidas.`;
 
 export async function lerCapaComIA(imagemDataUrl: string): Promise<LeituraCapa> {
   const apiKey = process.env["LOVABLE_API_KEY"];
@@ -73,5 +75,6 @@ export async function lerCapaComIA(imagemDataUrl: string): Promise<LeituraCapa> 
     autor: (dados.autor ?? "").toString().trim(),
     categoria: (dados.categoria ?? "").toString().trim(),
     isbn: (dados.isbn ?? "").toString().replace(/[^0-9Xx]/g, ""),
+    descricao: (dados.descricao ?? "").toString().trim(),
   };
 }
