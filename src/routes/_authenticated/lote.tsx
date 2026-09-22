@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
   CheckCircle2,
   Images,
   Loader2,
+  Pause,
+  Play,
   RefreshCw,
   Save,
   Tag,
@@ -18,6 +20,7 @@ import { NavBiblioteca } from "@/components/NavBiblioteca";
 import { FolhaEtiquetas } from "@/components/FolhaEtiquetas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,9 +35,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { criarLivrosEmLote, enviarCapa, listarLivros, type Livro } from "@/lib/biblioteca";
-import { prepararFoto } from "@/lib/imagem";
+import {
+  criarLivrosEmLote,
+  enviarCapa,
+  listarLivros,
+  type EntradaLivro,
+  type Livro,
+} from "@/lib/biblioteca";
+import { prepararFotoLeve } from "@/lib/imagem";
 import { lerCapaLivro } from "@/lib/ocr.functions";
+import { comNovaTentativa, rodarFila, type Fila } from "@/lib/fila";
+import { blobParaDataUrl, lerFoto, limparFotos, removerFoto, salvarFoto } from "@/lib/fotosLote";
 
 export const Route = createFileRoute("/_authenticated/lote")({
   head: () => ({
@@ -43,7 +54,7 @@ export const Route = createFileRoute("/_authenticated/lote")({
       {
         name: "description",
         content:
-          "Envie várias fotos de capas de uma vez, confira os dados lidos automaticamente e cadastre todos os livros juntos com etiquetas para imprimir.",
+          "Envie centenas de fotos de capas de uma vez, confira os dados lidos automaticamente e cadastre todos os livros juntos com etiquetas para imprimir.",
       },
       { property: "og:title", content: "Cadastrar livros em lote | Biblioteca Escolar" },
       {
@@ -57,26 +68,31 @@ export const Route = createFileRoute("/_authenticated/lote")({
   component: Lote,
 });
 
-type Situacao = "lendo" | "ok" | "conferir" | "repetido" | "falhou";
+type Situacao = "aguardando" | "lendo" | "ok" | "conferir" | "repetido" | "falhou";
 
 type LinhaLote = {
   id: string;
   arquivo: string;
-  dataUrl: string;
-  blob: Blob | null;
+  miniatura: string;
+  temFoto: boolean;
   situacao: Situacao;
-  erro?: string;
+  erro: string;
   selecionado: boolean;
   titulo: string;
   autor: string;
   categoria: string;
   isbn: string;
+  descricao: string;
   quantidade: string;
 };
 
 const CHAVE_RASCUNHO = "biblioteca:lote-rascunho";
+const MAXIMO_ARQUIVOS = 300;
+const POR_PAGINA = 50;
+const BLOCO_SALVAMENTO = 20;
 
 const SELOS: Record<Situacao, { texto: string; classe: string }> = {
+  aguardando: { texto: "Na fila", classe: "bg-muted text-muted-foreground" },
   lendo: { texto: "Lendo...", classe: "bg-muted text-muted-foreground" },
   ok: { texto: "Lido", classe: "bg-emerald-100 text-emerald-800" },
   conferir: { texto: "Precisa conferir", classe: "bg-amber-100 text-amber-900" },
@@ -89,16 +105,23 @@ function Lote() {
   const lerCapa = useServerFn(lerCapaLivro);
   const inputFotos = useRef<HTMLInputElement>(null);
   const inputPasta = useRef<HTMLInputElement>(null);
+  const filaRef = useRef<Fila | null>(null);
+  const linhasRef = useRef<LinhaLote[]>([]);
 
   const [linhas, setLinhas] = useState<LinhaLote[]>([]);
+  const [pagina, setPagina] = useState(0);
+  const [preparando, setPreparando] = useState({ feitos: 0, total: 0 });
   const [lidas, setLidas] = useState(0);
   const [total, setTotal] = useState(0);
   const [processando, setProcessando] = useState(false);
-  const [salvando, setSalvando] = useState(false);
+  const [pausado, setPausado] = useState(false);
+  const [salvando, setSalvando] = useState({ ativo: false, feitos: 0, total: 0 });
   const [categoriaEmMassa, setCategoriaEmMassa] = useState("");
   const [criados, setCriados] = useState<Livro[]>([]);
   const [folhaAberta, setFolhaAberta] = useState(false);
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
+
+  linhasRef.current = linhas;
 
   // Retoma a conferência (só os dados digitados; as fotos precisam ser enviadas de novo).
   useEffect(() => {
@@ -107,7 +130,7 @@ function Lote() {
       if (!bruto) return;
       const salvo = JSON.parse(bruto) as LinhaLote[];
       if (Array.isArray(salvo) && salvo.length > 0) {
-        setLinhas(salvo.map((l) => ({ ...l, blob: null, dataUrl: "" })));
+        setLinhas(salvo.map((l) => ({ ...l, miniatura: "", temFoto: false })));
         toast.info("Retomei a conferência anterior. As fotos precisam ser enviadas de novo.");
       }
     } catch {
@@ -115,80 +138,99 @@ function Lote() {
     }
   }, []);
 
+  // Rascunho gravado com atraso e sem imagens, para não estourar o espaço do navegador.
   useEffect(() => {
-    try {
-      if (linhas.length === 0) localStorage.removeItem(CHAVE_RASCUNHO);
-      else
+    const tempo = setTimeout(() => {
+      try {
+        if (linhas.length === 0) {
+          localStorage.removeItem(CHAVE_RASCUNHO);
+          return;
+        }
         localStorage.setItem(
           CHAVE_RASCUNHO,
-          JSON.stringify(linhas.map((l) => ({ ...l, blob: null, dataUrl: "" }))),
+          JSON.stringify(linhas.map((l) => ({ ...l, miniatura: "", temFoto: false }))),
         );
-    } catch {
-      /* espaço cheio, ignora */
-    }
+      } catch {
+        /* espaço cheio, ignora */
+      }
+    }, 800);
+    return () => clearTimeout(tempo);
   }, [linhas]);
 
-  function atualizar(id: string, campos: Partial<LinhaLote>) {
-    setLinhas((atual) => atual.map((l) => (l.id === id ? { ...l, ...campos } : l)));
-  }
+  useEffect(() => () => filaRef.current?.cancelar(), []);
 
-  async function classificar(linha: LinhaLote, titulo: string, isbn: string): Promise<Situacao> {
+  const atualizar = useCallback((id: string, campos: Partial<LinhaLote>) => {
+    setLinhas((atual) => {
+      const i = atual.findIndex((l) => l.id === id);
+      if (i < 0) return atual;
+      const copia = atual.slice();
+      copia[i] = { ...copia[i]!, ...campos };
+      return copia;
+    });
+  }, []);
+
+  async function classificar(id: string, titulo: string, isbn: string): Promise<Situacao> {
     if (!titulo.trim()) return "conferir";
+    const alvo = titulo.trim().toLowerCase();
     try {
-      const acervo = await queryClient.ensureQueryData({
+      const acervo = (await queryClient.ensureQueryData({
         queryKey: ["livros"],
         queryFn: listarLivros,
-      });
-      const repetido = (acervo as Livro[]).some(
-        (l) =>
-          l.titulo.trim().toLowerCase() === titulo.trim().toLowerCase() ||
-          (!!isbn && l.isbn === isbn),
-      );
-      if (repetido) return "repetido";
+      })) as Livro[];
+      if (acervo.some((l) => l.titulo.trim().toLowerCase() === alvo || (!!isbn && l.isbn === isbn)))
+        return "repetido";
     } catch {
       /* sem acervo em cache, segue */
     }
-    const jaNaLista = linhas.some(
-      (l) => l.id !== linha.id && l.titulo.trim().toLowerCase() === titulo.trim().toLowerCase(),
+    const jaNaLista = linhasRef.current.some(
+      (l) => l.id !== id && l.titulo.trim().toLowerCase() === alvo,
     );
     return jaNaLista ? "repetido" : "ok";
   }
 
-  async function lerLinha(linha: LinhaLote) {
-    atualizar(linha.id, { situacao: "lendo", erro: undefined });
-    try {
-      const dados = await lerCapa({ data: { imagemDataUrl: linha.dataUrl } });
-      const situacao = await classificar(linha, dados.titulo, dados.isbn);
-      atualizar(linha.id, {
-        titulo: dados.titulo,
-        autor: dados.autor,
-        categoria: dados.categoria,
-        isbn: dados.isbn,
-        situacao,
-      });
-    } catch (erro) {
-      atualizar(linha.id, {
-        situacao: "falhou",
-        erro: erro instanceof Error ? erro.message : "Não consegui ler esta foto.",
-      });
-    } finally {
-      setLidas((n) => n + 1);
-    }
-  }
-
-  /** Fila com no máximo 3 leituras ao mesmo tempo, para não travar a tela nem o serviço de leitura. */
-  async function processarFila(pendentes: LinhaLote[]) {
-    const fila = [...pendentes];
-    setProcessando(true);
-    const trabalhador = async () => {
-      for (;;) {
-        const proxima = fila.shift();
-        if (!proxima) return;
-        await lerLinha(proxima);
+  const lerLinha = useCallback(
+    async (id: string) => {
+      atualizar(id, { situacao: "lendo", erro: "" });
+      try {
+        const blob = await lerFoto(id);
+        if (!blob) throw new Error("A foto desta linha não está mais no navegador.");
+        const dataUrl = await blobParaDataUrl(blob);
+        const dados = await comNovaTentativa(() => lerCapa({ data: { imagemDataUrl: dataUrl } }));
+        const situacao = await classificar(id, dados.titulo, dados.isbn);
+        atualizar(id, {
+          titulo: dados.titulo,
+          autor: dados.autor,
+          categoria: dados.categoria,
+          isbn: dados.isbn,
+          descricao: dados.descricao ?? "",
+          situacao,
+        });
+      } catch (erro) {
+        atualizar(id, {
+          situacao: "falhou",
+          erro: erro instanceof Error ? erro.message : "Não consegui ler esta foto.",
+        });
+      } finally {
+        setLidas((n) => n + 1);
       }
-    };
-    await Promise.all([trabalhador(), trabalhador(), trabalhador()]);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [atualizar, lerCapa],
+  );
+
+  /** Fila com no máximo 3 leituras ao mesmo tempo, com pausa e nova tentativa automática. */
+  async function processarFila(ids: string[]) {
+    if (ids.length === 0) return;
+    setLidas(0);
+    setTotal(ids.length);
+    setProcessando(true);
+    setPausado(false);
+    const fila = rodarFila(ids, lerLinha, 3);
+    filaRef.current = fila;
+    await fila.promessa;
+    filaRef.current = null;
     setProcessando(false);
+    setPausado(false);
     toast.success("Leitura concluída. Confira os dados antes de salvar.");
   }
 
@@ -198,71 +240,156 @@ function Lote() {
       toast.error("Selecione fotos de capas (imagens).");
       return;
     }
-
-    const novas: LinhaLote[] = [];
-    for (const arquivo of arquivos) {
-      try {
-        const preparada = await prepararFoto(arquivo);
-        novas.push({
-          id: crypto.randomUUID(),
-          arquivo: arquivo.name,
-          dataUrl: preparada.dataUrl,
-          blob: preparada.blob,
-          situacao: "lendo",
-          selecionado: true,
-          titulo: "",
-          autor: "",
-          categoria: "",
-          isbn: "",
-          quantidade: "1",
-        });
-      } catch {
-        toast.error(`Não consegui abrir a foto ${arquivo.name}.`);
-      }
+    if (arquivos.length > MAXIMO_ARQUIVOS) {
+      toast.error(
+        `São ${arquivos.length} fotos de uma vez. Envie no máximo ${MAXIMO_ARQUIVOS} por lote para o site não travar.`,
+      );
+      return;
     }
 
-    setLinhas((atual) => [...atual, ...novas]);
-    setLidas(0);
-    setTotal(novas.length);
-    void processarFila(novas);
+    setPreparando({ feitos: 0, total: arquivos.length });
+    const novas: LinhaLote[] = [];
+    let acumulado: LinhaLote[] = [];
+
+    const descarregar = () => {
+      if (acumulado.length === 0) return;
+      const bloco = acumulado;
+      acumulado = [];
+      setLinhas((atual) => [...atual, ...bloco]);
+    };
+
+    const fila = rodarFila(
+      arquivos,
+      async (arquivo) => {
+        try {
+          const { blob, miniatura } = await prepararFotoLeve(arquivo);
+          const id = crypto.randomUUID();
+          await salvarFoto(id, blob);
+          const linha: LinhaLote = {
+            id,
+            arquivo: arquivo.name,
+            miniatura,
+            temFoto: true,
+            situacao: "aguardando",
+            erro: "",
+            selecionado: true,
+            titulo: "",
+            autor: "",
+            categoria: "",
+            isbn: "",
+            descricao: "",
+            quantidade: "1",
+          };
+          novas.push(linha);
+          acumulado.push(linha);
+          if (acumulado.length >= 10) descarregar();
+        } catch {
+          toast.error(`Não consegui abrir a foto ${arquivo.name}.`);
+        } finally {
+          setPreparando((p) => ({ ...p, feitos: p.feitos + 1 }));
+        }
+      },
+      4,
+    );
+    await fila.promessa;
+    descarregar();
+    setPreparando({ feitos: 0, total: 0 });
+
+    await processarFila(novas.map((l) => l.id));
   }
 
-  const selecionadas = linhas.filter((l) => l.selecionado && l.titulo.trim());
+  const contagens = useMemo(() => {
+    const base = { ok: 0, conferir: 0, repetido: 0, falhou: 0, pendente: 0 };
+    for (const l of linhas) {
+      if (l.situacao === "ok") base.ok++;
+      else if (l.situacao === "conferir") base.conferir++;
+      else if (l.situacao === "repetido") base.repetido++;
+      else if (l.situacao === "falhou") base.falhou++;
+      else base.pendente++;
+    }
+    return base;
+  }, [linhas]);
+
+  const selecionadas = useMemo(
+    () => linhas.filter((l) => l.selecionado && l.titulo.trim()),
+    [linhas],
+  );
 
   async function salvarTudo() {
     if (selecionadas.length === 0) {
       toast.error("Selecione ao menos um livro com título preenchido.");
       return;
     }
-    setSalvando(true);
+    setSalvando({ ativo: true, feitos: 0, total: selecionadas.length });
+    const salvos: Livro[] = [];
+    const idsSalvos = new Set<string>();
+    let falhas = 0;
+
     try {
-      const entradas = [];
-      for (const linha of selecionadas) {
-        const capa = linha.blob ? await enviarCapa(linha.blob) : null;
-        entradas.push({
-          titulo: linha.titulo,
-          autor: linha.autor,
-          categoria: linha.categoria,
-          isbn: linha.isbn,
-          quantidade: Number(linha.quantidade) || 1,
-          capa_url: capa,
-        });
+      for (let i = 0; i < selecionadas.length; i += BLOCO_SALVAMENTO) {
+        const bloco = selecionadas.slice(i, i + BLOCO_SALVAMENTO);
+        const entradas: EntradaLivro[] = [];
+
+        // Envio das capas com concorrência limitada.
+        const capas = new Map<string, string | null>();
+        const filaCapas = rodarFila(
+          bloco,
+          async (linha) => {
+            if (!linha.temFoto) return;
+            const blob = await lerFoto(linha.id);
+            capas.set(linha.id, blob ? await enviarCapa(blob) : null);
+          },
+          4,
+        );
+        await filaCapas.promessa;
+
+        for (const linha of bloco) {
+          entradas.push({
+            titulo: linha.titulo,
+            autor: linha.autor,
+            categoria: linha.categoria,
+            isbn: linha.isbn,
+            quantidade: Number(linha.quantidade) || 1,
+            capa_url: capas.get(linha.id) ?? null,
+            descricao: linha.descricao,
+          });
+        }
+
+        try {
+          const livros = await criarLivrosEmLote(entradas);
+          salvos.push(...livros);
+          for (const linha of bloco) {
+            idsSalvos.add(linha.id);
+            void removerFoto(linha.id);
+          }
+        } catch (erro) {
+          falhas += bloco.length;
+          console.error("[lote] bloco falhou", erro);
+        } finally {
+          setSalvando((s) => ({ ...s, feitos: Math.min(s.total, s.feitos + bloco.length) }));
+        }
       }
-      const livros = await criarLivrosEmLote(entradas);
+
       await queryClient.invalidateQueries({ queryKey: ["livros"] });
-      const idsSalvos = new Set(selecionadas.map((l) => l.id));
       setLinhas((atual) => atual.filter((l) => !idsSalvos.has(l.id)));
-      setCriados(livros);
-      setFolhaAberta(true);
-      toast.success(`${livros.length} livro(s) cadastrado(s). Agora imprima as etiquetas.`);
-    } catch (erro) {
-      toast.error(erro instanceof Error ? erro.message : "Não consegui salvar os livros.");
+      setCriados(salvos);
+      if (salvos.length > 0) {
+        setFolhaAberta(true);
+        toast.success(`${salvos.length} livro(s) cadastrado(s). Agora imprima as etiquetas.`);
+      }
+      if (falhas > 0)
+        toast.error(`${falhas} livro(s) não foram salvos. Eles continuam na lista para tentar de novo.`);
     } finally {
-      setSalvando(false);
+      setSalvando({ ativo: false, feitos: 0, total: 0 });
     }
   }
 
   const progresso = total > 0 ? Math.round((lidas / total) * 100) : 0;
+  const progressoPreparo =
+    preparando.total > 0 ? Math.round((preparando.feitos / preparando.total) * 100) : 0;
+  const paginas = Math.max(1, Math.ceil(linhas.length / POR_PAGINA));
+  const paginaAtual = Math.min(pagina, paginas - 1);
+  const visiveis = linhas.slice(paginaAtual * POR_PAGINA, paginaAtual * POR_PAGINA + POR_PAGINA);
 
   return (
     <div className="min-h-screen">
@@ -271,8 +398,8 @@ function Lote() {
       <main className="mx-auto max-w-6xl px-4 py-10">
         <h1 className="font-display text-4xl font-semibold">Cadastrar livros em lote</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
-          Envie de uma vez as fotos das capas (ou uma pasta inteira). O site lê cada capa, monta uma
-          lista para você conferir e só salva quando você confirmar.
+          Envie de uma vez as fotos das capas (ou uma pasta inteira, até {MAXIMO_ARQUIVOS} fotos). O
+          site lê cada capa, monta uma lista para você conferir e só salva quando você confirmar.
         </p>
 
         <section
@@ -293,7 +420,10 @@ function Lote() {
             accept="image/*"
             multiple
             className="hidden"
-            onChange={(e) => void aoEscolherArquivos(e.target.files)}
+            onChange={(e) => {
+              void aoEscolherArquivos(e.target.files);
+              e.target.value = "";
+            }}
           />
           <input
             ref={inputPasta}
@@ -303,21 +433,37 @@ function Lote() {
             // @ts-expect-error atributo só existe nos navegadores
             webkitdirectory=""
             className="hidden"
-            onChange={(e) => void aoEscolherArquivos(e.target.files)}
+            onChange={(e) => {
+              void aoEscolherArquivos(e.target.files);
+              e.target.value = "";
+            }}
           />
 
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <Button onClick={() => inputFotos.current?.click()} disabled={processando}>
+            <Button
+              onClick={() => inputFotos.current?.click()}
+              disabled={processando || preparando.total > 0}
+            >
               Escolher várias fotos
             </Button>
             <Button
               variant="secondary"
               onClick={() => inputPasta.current?.click()}
-              disabled={processando}
+              disabled={processando || preparando.total > 0}
             >
               Escolher uma pasta
             </Button>
           </div>
+
+          {preparando.total > 0 ? (
+            <div className="mx-auto mt-6 max-w-md">
+              <p className="mb-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Preparando {preparando.feitos} de{" "}
+                {preparando.total} fotos
+              </p>
+              <Progress value={progressoPreparo} />
+            </div>
+          ) : null}
 
           {processando ? (
             <div className="mx-auto mt-6 max-w-md">
@@ -326,13 +472,60 @@ function Lote() {
                 {total}
               </p>
               <Progress value={progresso} />
+              <Button
+                size="sm"
+                variant="secondary"
+                className="mt-3"
+                onClick={() => {
+                  if (pausado) {
+                    filaRef.current?.retomar();
+                    setPausado(false);
+                  } else {
+                    filaRef.current?.pausar();
+                    setPausado(true);
+                  }
+                }}
+              >
+                {pausado ? (
+                  <>
+                    <Play className="mr-1.5 size-3.5" /> Continuar leitura
+                  </>
+                ) : (
+                  <>
+                    <Pause className="mr-1.5 size-3.5" /> Pausar leitura
+                  </>
+                )}
+              </Button>
             </div>
           ) : null}
         </section>
 
         {linhas.length > 0 ? (
           <section className="mt-10">
-            <div className="flex flex-wrap items-end gap-3">
+            <div className="surface-paper sticky top-[4.5rem] z-20 flex flex-wrap items-center gap-2 rounded-xl px-4 py-3 text-sm">
+              <Badge variant="secondary">{linhas.length} fotos</Badge>
+              <Badge className="bg-emerald-100 text-emerald-800">{contagens.ok} lidos</Badge>
+              <Badge className="bg-amber-100 text-amber-900">
+                {contagens.conferir} para conferir
+              </Badge>
+              <Badge className="bg-sky-100 text-sky-900">{contagens.repetido} repetidos</Badge>
+              <Badge className="bg-red-100 text-red-800">{contagens.falhou} falharam</Badge>
+              {contagens.falhou > 0 && !processando ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() =>
+                    void processarFila(
+                      linhas.filter((l) => l.situacao === "falhou" && l.temFoto).map((l) => l.id),
+                    )
+                  }
+                >
+                  <RefreshCw className="mr-1.5 size-3.5" /> Tentar de novo os que falharam
+                </Button>
+              ) : null}
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-end gap-3">
               <div>
                 <h2 className="font-display text-2xl font-semibold">Conferência</h2>
                 <p className="text-sm text-muted-foreground">
@@ -374,111 +567,63 @@ function Lote() {
             </div>
 
             <ul className="mt-5 grid gap-3">
-              {linhas.map((linha) => (
-                <li key={linha.id} className="surface-paper rounded-xl p-4">
-                  <div className="flex flex-wrap items-start gap-4">
-                    <Checkbox
-                      checked={linha.selecionado}
-                      onCheckedChange={(v) => atualizar(linha.id, { selecionado: v === true })}
-                      aria-label={`Selecionar ${linha.arquivo}`}
-                      className="mt-1"
-                    />
-
-                    <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
-                      {linha.dataUrl ? (
-                        <img
-                          src={linha.dataUrl}
-                          alt={`Capa de ${linha.titulo || linha.arquivo}`}
-                          className="size-full object-cover"
-                        />
-                      ) : null}
-                    </div>
-
-                    <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
-                      <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${SELOS[linha.situacao].classe}`}
-                        >
-                          {linha.situacao === "ok" ? (
-                            <CheckCircle2 className="size-3.5" />
-                          ) : linha.situacao === "falhou" ? (
-                            <XCircle className="size-3.5" />
-                          ) : linha.situacao === "lendo" ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                          ) : (
-                            <AlertTriangle className="size-3.5" />
-                          )}
-                          {SELOS[linha.situacao].texto}
-                        </span>
-                        <span className="truncate text-xs text-muted-foreground">
-                          {linha.arquivo}
-                        </span>
-                        {linha.situacao === "falhou" && linha.dataUrl ? (
-                          <Button size="sm" variant="secondary" onClick={() => void lerLinha(linha)}>
-                            <RefreshCw className="mr-1.5 size-3.5" /> Tentar de novo
-                          </Button>
-                        ) : null}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="ml-auto"
-                          onClick={() =>
-                            setLinhas((atual) => atual.filter((l) => l.id !== linha.id))
-                          }
-                          aria-label={`Remover ${linha.arquivo}`}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
-
-                      <CampoLinha
-                        rotulo="Título"
-                        valor={linha.titulo}
-                        onChange={(v) => atualizar(linha.id, { titulo: v })}
-                      />
-                      <CampoLinha
-                        rotulo="Autor"
-                        valor={linha.autor}
-                        onChange={(v) => atualizar(linha.id, { autor: v })}
-                      />
-                      <CampoLinha
-                        rotulo="Categoria"
-                        valor={linha.categoria}
-                        onChange={(v) => atualizar(linha.id, { categoria: v })}
-                      />
-                      <CampoLinha
-                        rotulo="ISBN"
-                        valor={linha.isbn}
-                        onChange={(v) => atualizar(linha.id, { isbn: v })}
-                      />
-                      <CampoLinha
-                        rotulo="Exemplares"
-                        tipo="number"
-                        valor={linha.quantidade}
-                        onChange={(v) => atualizar(linha.id, { quantidade: v })}
-                      />
-                      {linha.erro ? (
-                        <p className="self-end text-xs text-destructive">{linha.erro}</p>
-                      ) : null}
-                    </div>
-                  </div>
-                </li>
+              {visiveis.map((linha) => (
+                <LinhaConferencia
+                  key={linha.id}
+                  linha={linha}
+                  atualizar={atualizar}
+                  onRemover={() => {
+                    void removerFoto(linha.id);
+                    setLinhas((atual) => atual.filter((l) => l.id !== linha.id));
+                  }}
+                  onReler={() => void processarFila([linha.id])}
+                  ocupado={processando}
+                />
               ))}
             </ul>
 
-            <div className="sticky bottom-4 mt-6 flex flex-wrap gap-2">
+            {paginas > 1 ? (
+              <div className="mt-5 flex items-center justify-center gap-3">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={paginaAtual === 0}
+                  onClick={() => setPagina(paginaAtual - 1)}
+                >
+                  Anterior
+                </Button>
+                <span className="text-sm text-muted-foreground">
+                  Página {paginaAtual + 1} de {paginas}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={paginaAtual >= paginas - 1}
+                  onClick={() => setPagina(paginaAtual + 1)}
+                >
+                  Próxima
+                </Button>
+              </div>
+            ) : null}
+
+            <div className="sticky bottom-4 mt-6 flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
                 onClick={() => void salvarTudo()}
-                disabled={salvando || processando || selecionadas.length === 0}
+                disabled={salvando.ativo || processando || selecionadas.length === 0}
               >
-                {salvando ? (
+                {salvando.ativo ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />
                 ) : (
                   <Save className="mr-2 size-4" />
                 )}
                 Salvar os {selecionadas.length} livros selecionados
               </Button>
+              {salvando.ativo ? (
+                <span className="text-sm text-muted-foreground">
+                  Salvando {salvando.feitos} de {salvando.total}
+                </span>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -512,9 +657,13 @@ function Lote() {
             <AlertDialogCancel>Voltar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
+                filaRef.current?.cancelar();
+                void limparFotos();
                 setLinhas([]);
                 setTotal(0);
                 setLidas(0);
+                setPagina(0);
+                setProcessando(false);
               }}
             >
               Limpar
@@ -523,6 +672,116 @@ function Lote() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+function LinhaConferencia({
+  linha,
+  atualizar,
+  onRemover,
+  onReler,
+  ocupado,
+}: {
+  linha: LinhaLote;
+  atualizar: (id: string, campos: Partial<LinhaLote>) => void;
+  onRemover: () => void;
+  onReler: () => void;
+  ocupado: boolean;
+}) {
+  const selo = SELOS[linha.situacao];
+  return (
+    <li className="surface-paper rounded-xl p-4">
+      <div className="flex flex-wrap items-start gap-4">
+        <Checkbox
+          checked={linha.selecionado}
+          onCheckedChange={(v) => atualizar(linha.id, { selecionado: v === true })}
+          aria-label={`Selecionar ${linha.arquivo}`}
+          className="mt-1"
+        />
+
+        <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
+          {linha.miniatura ? (
+            <img
+              src={linha.miniatura}
+              alt={`Capa de ${linha.titulo || linha.arquivo}`}
+              loading="lazy"
+              className="size-full object-cover"
+            />
+          ) : null}
+        </div>
+
+        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${selo.classe}`}
+            >
+              {linha.situacao === "ok" ? (
+                <CheckCircle2 className="size-3.5" />
+              ) : linha.situacao === "falhou" ? (
+                <XCircle className="size-3.5" />
+              ) : linha.situacao === "lendo" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <AlertTriangle className="size-3.5" />
+              )}
+              {selo.texto}
+            </span>
+            <span className="truncate text-xs text-muted-foreground">{linha.arquivo}</span>
+            {linha.situacao === "falhou" && linha.temFoto && !ocupado ? (
+              <Button size="sm" variant="secondary" onClick={onReler}>
+                <RefreshCw className="mr-1.5 size-3.5" /> Tentar de novo
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto"
+              onClick={onRemover}
+              aria-label={`Remover ${linha.arquivo}`}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+
+          <CampoLinha
+            rotulo="Título"
+            valor={linha.titulo}
+            onChange={(v) => atualizar(linha.id, { titulo: v })}
+          />
+          <CampoLinha
+            rotulo="Autor"
+            valor={linha.autor}
+            onChange={(v) => atualizar(linha.id, { autor: v })}
+          />
+          <CampoLinha
+            rotulo="Categoria"
+            valor={linha.categoria}
+            onChange={(v) => atualizar(linha.id, { categoria: v })}
+          />
+          <CampoLinha
+            rotulo="ISBN"
+            valor={linha.isbn}
+            onChange={(v) => atualizar(linha.id, { isbn: v })}
+          />
+          <CampoLinha
+            rotulo="Exemplares"
+            tipo="number"
+            valor={linha.quantidade}
+            onChange={(v) => atualizar(linha.id, { quantidade: v })}
+          />
+          <div className="grid gap-1 sm:col-span-2">
+            <Label className="text-xs text-muted-foreground">Descrição</Label>
+            <Textarea
+              value={linha.descricao}
+              onChange={(e) => atualizar(linha.id, { descricao: e.target.value })}
+              rows={2}
+              placeholder="Resumo curto do livro"
+            />
+          </div>
+          {linha.erro ? <p className="text-xs text-destructive">{linha.erro}</p> : null}
+        </div>
+      </div>
+    </li>
   );
 }
 
