@@ -1,12 +1,25 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { BookMarked, LibraryBig, Search, Sparkles } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { BookMarked, LibraryBig, Loader2, Search, Sparkles, Tag, Wand2 } from "lucide-react";
+import { toast } from "sonner";
 import { NavBiblioteca } from "@/components/NavBiblioteca";
+import { EtiquetaLivro } from "@/components/EtiquetaLivro";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { listarLivros } from "@/lib/biblioteca";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
+import { atualizarLivro, listarLivros, type Livro } from "@/lib/biblioteca";
+import { gerarDescricaoLivro } from "@/lib/descricao.functions";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
