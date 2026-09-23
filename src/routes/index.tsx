@@ -159,11 +159,15 @@ function Catalogo() {
         ) : (
           <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {filtrados.map((livro) => (
-              <li
-                key={livro.id}
-                className="surface-paper card-lift group flex gap-4 overflow-hidden rounded-2xl p-4"
-              >
+              <li key={livro.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelecionado(livro)}
+                  aria-label={`Ver detalhes de ${livro.titulo}`}
+                  className="surface-paper card-lift group flex w-full gap-4 overflow-hidden rounded-2xl p-4 text-left"
+                >
                 <div className="relative h-32 w-22 shrink-0 overflow-hidden rounded-xl bg-muted shadow-[var(--shadow-paper)]">
+
                   {livro.capa_url ? (
                     <img
                       src={livro.capa_url}
