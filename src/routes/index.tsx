@@ -1,12 +1,25 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { BookMarked, LibraryBig, Search, Sparkles } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { BookMarked, LibraryBig, Loader2, Search, Sparkles, Tag, Wand2 } from "lucide-react";
+import { toast } from "sonner";
 import { NavBiblioteca } from "@/components/NavBiblioteca";
+import { EtiquetaLivro } from "@/components/EtiquetaLivro";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { listarLivros } from "@/lib/biblioteca";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
+import { atualizarLivro, listarLivros, type Livro } from "@/lib/biblioteca";
+import { gerarDescricaoLivro } from "@/lib/descricao.functions";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -30,6 +43,16 @@ export const Route = createFileRoute("/")({
 function Catalogo() {
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("Todas");
+  const [selecionado, setSelecionado] = useState<Livro | null>(null);
+  const [etiqueta, setEtiqueta] = useState<Livro | null>(null);
+  const [logado, setLogado] = useState(false);
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => setLogado(!!data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setLogado(!!s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
   const { data: livros = [], isLoading } = useQuery({
     queryKey: ["livros"],
     queryFn: listarLivros,
@@ -136,11 +159,15 @@ function Catalogo() {
         ) : (
           <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {filtrados.map((livro) => (
-              <li
-                key={livro.id}
-                className="surface-paper card-lift group flex gap-4 overflow-hidden rounded-2xl p-4"
-              >
+              <li key={livro.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelecionado(livro)}
+                  aria-label={`Ver detalhes de ${livro.titulo}`}
+                  className="surface-paper card-lift group flex w-full gap-4 overflow-hidden rounded-2xl p-4 text-left"
+                >
                 <div className="relative h-32 w-22 shrink-0 overflow-hidden rounded-xl bg-muted shadow-[var(--shadow-paper)]">
+
                   {livro.capa_url ? (
                     <img
                       src={livro.capa_url}
@@ -180,14 +207,144 @@ function Catalogo() {
                     </Badge>
                   </div>
                 </div>
+                </button>
+
               </li>
             ))}
           </ul>
         )}
       </main>
+
+      <FichaLivro
+        livro={selecionado}
+        logado={logado}
+        onFechar={() => setSelecionado(null)}
+        onEtiqueta={(l) => {
+          setSelecionado(null);
+          setEtiqueta(l);
+        }}
+      />
+      <EtiquetaLivro livro={etiqueta} aberto={!!etiqueta} onFechar={() => setEtiqueta(null)} />
     </div>
   );
 }
+
+function FichaLivro({
+  livro,
+  logado,
+  onFechar,
+  onEtiqueta,
+}: {
+  livro: Livro | null;
+  logado: boolean;
+  onFechar: () => void;
+  onEtiqueta: (livro: Livro) => void;
+}) {
+  const queryClient = useQueryClient();
+  const gerar = useServerFn(gerarDescricaoLivro);
+  const [gerando, setGerando] = useState(false);
+
+  if (!livro) return null;
+
+  async function gerarDescricao() {
+    if (!livro) return;
+    setGerando(true);
+    try {
+      const { descricao } = await gerar({
+        data: { titulo: livro.titulo, autor: livro.autor, categoria: livro.categoria },
+      });
+      await atualizarLivro(livro.id, { descricao });
+      await queryClient.invalidateQueries({ queryKey: ["livros"] });
+      toast.success("Descrição criada.");
+      onFechar();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não consegui criar a descrição.");
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onFechar()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-display text-2xl">{livro.titulo}</DialogTitle>
+          <DialogDescription>{livro.autor || "Autor não informado"}</DialogDescription>
+        </DialogHeader>
+
+        <div className="flex gap-4">
+          <div className="h-44 w-30 shrink-0 overflow-hidden rounded-xl bg-muted">
+            {livro.capa_url ? (
+              <img
+                src={livro.capa_url}
+                alt={`Capa de ${livro.titulo}`}
+                className="size-full object-cover"
+              />
+            ) : (
+              <div className="grid size-full place-items-center text-muted-foreground">
+                <BookMarked className="size-7" />
+              </div>
+            )}
+          </div>
+
+          <dl className="min-w-0 flex-1 space-y-1.5 text-sm">
+            <Info rotulo="Código" valor={livro.codigo} />
+            <Info rotulo="Categoria" valor={livro.categoria || "—"} />
+            <Info rotulo="ISBN" valor={livro.isbn || "—"} />
+            <Info
+              rotulo="Exemplares"
+              valor={`${livro.disponiveis} disponíveis de ${livro.quantidade}`}
+            />
+            <Info
+              rotulo="Cadastrado em"
+              valor={new Date(livro.created_at).toLocaleDateString("pt-BR")}
+            />
+          </dl>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Sobre o livro
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed">
+            {livro.descricao || "Ainda não há uma descrição para este livro."}
+          </p>
+        </div>
+
+        {logado ? (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => onEtiqueta(livro)}>
+              <Tag className="mr-2 size-4" /> Imprimir etiqueta
+            </Button>
+            <Button asChild variant="secondary">
+              <Link to="/emprestimos">Emprestar este livro</Link>
+            </Button>
+            {!livro.descricao ? (
+              <Button onClick={() => void gerarDescricao()} disabled={gerando}>
+                {gerando ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <Wand2 className="mr-2 size-4" />
+                )}
+                Gerar descrição
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Info({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="w-28 shrink-0 text-muted-foreground">{rotulo}</dt>
+      <dd className="min-w-0 flex-1 truncate font-medium">{valor}</dd>
+    </div>
+  );
+}
+
 
 function Estatistica({
   valor,
