@@ -43,6 +43,16 @@ export const Route = createFileRoute("/")({
 function Catalogo() {
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("Todas");
+  const [selecionado, setSelecionado] = useState<Livro | null>(null);
+  const [etiqueta, setEtiqueta] = useState<Livro | null>(null);
+  const [logado, setLogado] = useState(false);
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => setLogado(!!data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setLogado(!!s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
   const { data: livros = [], isLoading } = useQuery({
     queryKey: ["livros"],
     queryFn: listarLivros,
