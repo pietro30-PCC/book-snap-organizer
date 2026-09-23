@@ -207,9 +207,8 @@ function Catalogo() {
                     </Badge>
                   </div>
                 </div>
-                  </div>
-                </div>
                 </button>
+
               </li>
             ))}
           </ul>
