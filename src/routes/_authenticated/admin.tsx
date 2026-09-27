@@ -84,9 +84,14 @@ function Admin() {
     if (!arquivo) return;
     try {
       setLendo(true);
-      const preparada = await prepararFoto(arquivo);
+      const preparada = await prepararFoto(arquivo, 2048);
       setFoto(preparada);
-      const dados = await lerCapa({ data: { imagemDataUrl: preparada.dataUrl } });
+      const { lerLivroGratis } = await import("@/lib/leituraGratis");
+      const gratis = await lerLivroGratis(preparada.blob);
+      const dados =
+        gratis?.dados.titulo
+          ? gratis.dados
+          : await lerCapa({ data: { imagemDataUrl: preparada.dataUrl } });
       setForm((atual) => ({
         titulo: dados.titulo || atual.titulo,
         autor: dados.autor || atual.autor,

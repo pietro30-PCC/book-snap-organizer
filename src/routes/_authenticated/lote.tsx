@@ -46,6 +46,7 @@ import { prepararFotoLeve } from "@/lib/imagem";
 import { lerCapaLivro } from "@/lib/ocr.functions";
 import { comNovaTentativa, rodarFila, type Fila } from "@/lib/fila";
 import { blobParaDataUrl, lerFoto, limparFotos, removerFoto, salvarFoto } from "@/lib/fotosLote";
+import { lerLivroGratis } from "@/lib/leituraGratis";
 
 export const Route = createFileRoute("/_authenticated/lote")({
   head: () => ({
@@ -87,7 +88,7 @@ type LinhaLote = {
 };
 
 const CHAVE_RASCUNHO = "biblioteca:lote-rascunho";
-const MAXIMO_ARQUIVOS = 300;
+const MAXIMO_ARQUIVOS = 1000;
 const POR_PAGINA = 50;
 const BLOCO_SALVAMENTO = 20;
 
@@ -120,8 +121,11 @@ function Lote() {
   const [criados, setCriados] = useState<Livro[]>([]);
   const [folhaAberta, setFolhaAberta] = useState(false);
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
+  const [usarIA, setUsarIA] = useState(false);
+  const usarIARef = useRef(false);
 
   linhasRef.current = linhas;
+  usarIARef.current = usarIA;
 
   // Retoma a conferência (só os dados digitados; as fotos precisam ser enviadas de novo).
   useEffect(() => {
@@ -194,9 +198,18 @@ function Lote() {
       try {
         const blob = await lerFoto(id);
         if (!blob) throw new Error("A foto desta linha não está mais no navegador.");
-        const dataUrl = await blobParaDataUrl(blob);
-        const dados = await comNovaTentativa(() => lerCapa({ data: { imagemDataUrl: dataUrl } }));
-        const situacao = await classificar(id, dados.titulo, dados.isbn);
+        const gratis = await lerLivroGratis(blob).catch(() => null);
+        let dados = gratis?.dados;
+        let certo = gratis?.certo ?? false;
+        if ((!dados || !dados.titulo) && usarIARef.current) {
+          const dataUrl = await blobParaDataUrl(blob);
+          dados = await comNovaTentativa(() => lerCapa({ data: { imagemDataUrl: dataUrl } }));
+          certo = true;
+        }
+        if (!dados || (!dados.titulo && !dados.isbn))
+          throw new Error("Não reconheci este livro. Digite os dados.");
+        let situacao = await classificar(id, dados.titulo, dados.isbn);
+        if (situacao === "ok" && (!certo || !dados.titulo)) situacao = "conferir";
         atualizar(id, {
           titulo: dados.titulo,
           autor: dados.autor,
@@ -225,7 +238,7 @@ function Lote() {
     setTotal(ids.length);
     setProcessando(true);
     setPausado(false);
-    const fila = rodarFila(ids, lerLinha, 3);
+    const fila = rodarFila(ids, lerLinha, 2);
     filaRef.current = fila;
     await fila.promessa;
     filaRef.current = null;
@@ -262,7 +275,7 @@ function Lote() {
       arquivos,
       async (arquivo) => {
         try {
-          const { blob, miniatura } = await prepararFotoLeve(arquivo);
+          const { blob, miniatura } = await prepararFotoLeve(arquivo, 2048);
           const id = crypto.randomUUID();
           await salvarFoto(id, blob);
           const linha: LinhaLote = {
@@ -399,8 +412,17 @@ function Lote() {
         <h1 className="font-display text-4xl font-semibold">Cadastrar livros em lote</h1>
         <p className="mt-2 max-w-2xl text-muted-foreground">
           Envie de uma vez as fotos das capas (ou uma pasta inteira, até {MAXIMO_ARQUIVOS} fotos). O
-          site lê cada capa, monta uma lista para você conferir e só salva quando você confirmar.
+          site lê cada livro de graça, monta uma lista para você conferir e só salva quando você
+          confirmar.
         </p>
+        <p className="mt-3 max-w-2xl rounded-lg bg-muted px-3 py-2 text-sm">
+          Dica: para melhor resultado, fotografe a <strong>contracapa com o código de barras</strong>{" "}
+          visível — assim os dados vêm do cadastro oficial do livro.
+        </p>
+        <label className="mt-3 flex max-w-2xl items-center gap-2 text-sm">
+          <Checkbox checked={usarIA} onCheckedChange={(v) => setUsarIA(v === true)} />
+          Usar IA nos livros que não forem reconhecidos (gasta créditos)
+        </label>
 
         <section
           className="surface-paper mt-8 rounded-xl border border-dashed border-border p-6 text-center"
