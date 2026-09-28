@@ -81,11 +81,12 @@ function iniciais(titulo: string) {
   return sigla || "?";
 }
 
-function semCategoria(livro: Livro) {
-  return !livro.categoria?.trim();
+function tomDe(codigo: string) {
+  let soma = 0;
+  for (let i = 0; i < codigo.length; i += 1) soma += codigo.charCodeAt(i);
+  return CAPAS[soma % CAPAS.length];
 }
 
-function Catalogo() {
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("Todas");
   const [ordem, setOrdem] = useState<Ordem>("titulo");
