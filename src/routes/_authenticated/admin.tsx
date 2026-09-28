@@ -2,7 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Camera, Loader2, Plus, Sparkles, Tag, Trash2 } from "lucide-react";
+import { Camera, Loader2, Minus, Pencil, Plus, Sparkles, Tag, Trash2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { NavBiblioteca } from "@/components/NavBiblioteca";
 import { EtiquetaLivro } from "@/components/EtiquetaLivro";
@@ -12,7 +20,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { criarLivro, enviarCapa, listarLivros, removerLivro, type Livro } from "@/lib/biblioteca";
+import {
+  atualizarQuantidade,
+  criarLivro,
+  enviarCapa,
+  listarLivros,
+  removerLivro,
+  trocarCapa,
+  type Livro,
+} from "@/lib/biblioteca";
 import { prepararFoto } from "@/lib/imagem";
 import { lerCapaLivro } from "@/lib/ocr.functions";
 
@@ -46,6 +62,8 @@ function Admin() {
   const [foto, setFoto] = useState<{ dataUrl: string; blob: Blob } | null>(null);
   const [lendo, setLendo] = useState(false);
   const [etiqueta, setEtiqueta] = useState<Livro | null>(null);
+  const [confirmar, setConfirmar] = useState(false);
+  const [editando, setEditando] = useState<Livro | null>(null);
 
   const { data: livros = [] } = useQuery({ queryKey: ["livros"], queryFn: listarLivros });
 
@@ -65,6 +83,7 @@ function Admin() {
       queryClient.invalidateQueries({ queryKey: ["livros"] });
       setForm(VAZIO);
       setFoto(null);
+      setConfirmar(false);
       setEtiqueta(livro);
       toast.success(`Livro cadastrado com o código ${livro.codigo}`);
     },
@@ -99,7 +118,7 @@ function Admin() {
         isbn: dados.isbn || atual.isbn,
         quantidade: atual.quantidade,
       }));
-      toast.success("Dados lidos da capa. Confira antes de salvar.");
+      setConfirmar(true);
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não consegui ler a foto.");
     } finally {
@@ -154,7 +173,7 @@ function Admin() {
                 accept="image/*"
                 capture="environment"
                 className="hidden"
-                onChange={(e) => void aoEscolherFoto(e.target.files?.[0])}
+                onChange={(e) => { void aoEscolherFoto(e.target.files?.[0]); e.target.value = ""; }}
               />
               <Button
                 type="button"
@@ -169,7 +188,7 @@ function Admin() {
                   </>
                 ) : (
                   <>
-                    <Camera className="mr-2 size-4" /> Tirar / escolher foto
+                    <Camera className="mr-2 size-4" /> Abrir câmera e fotografar
                   </>
                 )}
               </Button>
@@ -272,6 +291,9 @@ function Admin() {
                       <Button size="sm" variant="secondary" onClick={() => setEtiqueta(livro)}>
                         <Tag className="mr-1.5 size-3.5" /> Etiqueta
                       </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setEditando(livro)}>
+                        <Pencil className="mr-1.5 size-3.5" /> Editar
+                      </Button>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -291,6 +313,42 @@ function Admin() {
           )}
         </section>
       </main>
+
+      <Dialog open={confirmar} onOpenChange={setConfirmar}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Livro reconhecido</DialogTitle>
+            <DialogDescription>Confira os dados e diga quantos exemplares vocês têm.</DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-4">
+            {foto && (
+              <img src={foto.dataUrl} alt="Capa" className="h-32 w-24 rounded-md object-cover" />
+            )}
+            <div className="grid flex-1 gap-3">
+              <Campo id="c-titulo" rotulo="Título" valor={form.titulo} onChange={(v) => setForm({ ...form, titulo: v })} />
+              <Campo id="c-autor" rotulo="Autor" valor={form.autor} onChange={(v) => setForm({ ...form, autor: v })} />
+            </div>
+          </div>
+          <Contador
+            valor={Number(form.quantidade) || 1}
+            onChange={(n) => setForm({ ...form, quantidade: String(n) })}
+          />
+          <DialogFooter className="gap-2">
+            <Button variant="secondary" onClick={() => inputFoto.current?.click()}>
+              <Camera className="mr-2 size-4" /> Tirar outra foto
+            </Button>
+            <Button
+              disabled={salvar.isPending || !form.titulo.trim()}
+              onClick={() => salvar.mutate()}
+            >
+              {salvar.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+              Confirmar e gerar etiqueta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <EditarLivro livro={editando} onFechar={() => setEditando(null)} />
 
       <EtiquetaLivro livro={etiqueta} aberto={!!etiqueta} onFechar={() => setEtiqueta(null)} />
     </div>
@@ -315,5 +373,103 @@ function Campo({
       <Label htmlFor={id}>{rotulo}</Label>
       <Input id={id} type={tipo} value={valor} onChange={(e) => onChange(e.target.value)} />
     </div>
+  );
+}
+
+function Contador({ valor, onChange }: { valor: number; onChange: (n: number) => void }) {
+  return (
+    <div className="grid gap-1.5">
+      <Label>Quantos exemplares?</Label>
+      <div className="flex items-center gap-2">
+        <Button type="button" size="icon" variant="secondary" aria-label="Menos" onClick={() => onChange(Math.max(1, valor - 1))}>
+          <Minus className="size-4" />
+        </Button>
+        <Input
+          type="number"
+          min={1}
+          className="w-24 text-center text-lg"
+          value={valor}
+          onChange={(e) => onChange(Math.max(1, Number(e.target.value) || 1))}
+        />
+        <Button type="button" size="icon" variant="secondary" aria-label="Mais" onClick={() => onChange(valor + 1)}>
+          <Plus className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function EditarLivro({ livro, onFechar }: { livro: Livro | null; onFechar: () => void }) {
+  const queryClient = useQueryClient();
+  const inputFoto = useRef<HTMLInputElement>(null);
+  const [qtd, setQtd] = useState(1);
+  const [novaFoto, setNovaFoto] = useState<{ dataUrl: string; blob: Blob } | null>(null);
+  const [ultimo, setUltimo] = useState<string | null>(null);
+  if (livro && livro.id !== ultimo) {
+    setUltimo(livro.id);
+    setQtd(livro.quantidade);
+    setNovaFoto(null);
+  }
+
+  const salvar = useMutation({
+    mutationFn: async () => {
+      if (!livro) return;
+      if (qtd !== livro.quantidade) await atualizarQuantidade(livro, qtd);
+      if (novaFoto) await trocarCapa(livro.id, novaFoto.blob);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["livros"] });
+      toast.success("Livro atualizado.");
+      setUltimo(null);
+      onFechar();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={!!livro} onOpenChange={(a) => { if (!a) { setUltimo(null); onFechar(); } }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Editar livro</DialogTitle>
+          <DialogDescription>{livro?.titulo}</DialogDescription>
+        </DialogHeader>
+        <div className="flex items-start gap-4">
+          <div className="h-36 w-26 shrink-0 overflow-hidden rounded-md bg-muted" style={{ width: 104 }}>
+            {(novaFoto?.dataUrl || livro?.capa_url) && (
+              <img src={novaFoto?.dataUrl || livro?.capa_url || ""} alt="Capa" className="size-full object-cover" />
+            )}
+          </div>
+          <div className="grid gap-4">
+            <input
+              ref={inputFoto}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (f) setNovaFoto(await prepararFoto(f, 1280));
+                e.target.value = "";
+              }}
+            />
+            <Button type="button" variant="secondary" onClick={() => inputFoto.current?.click()}>
+              <Camera className="mr-2 size-4" /> Trocar foto
+            </Button>
+            <Contador valor={qtd} onChange={setQtd} />
+            {livro && (
+              <p className="text-xs text-muted-foreground">
+                {livro.quantidade - livro.disponiveis} emprestado(s) agora.
+              </p>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button disabled={salvar.isPending} onClick={() => salvar.mutate()}>
+            {salvar.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+            Salvar alterações
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

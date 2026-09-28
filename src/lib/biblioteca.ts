@@ -160,6 +160,29 @@ export async function atualizarLivro(
   ) as Livro;
 }
 
+/** Muda a quantidade de exemplares mantendo os emprestados coerentes. */
+export async function atualizarQuantidade(livro: Livro, novaQuantidade: number): Promise<Livro> {
+  const emprestados = livro.quantidade - livro.disponiveis;
+  const qtd = Math.max(1, Math.round(novaQuantidade));
+  if (qtd < emprestados)
+    throw new Error(`Há ${emprestados} exemplar(es) emprestado(s). A quantidade não pode ser menor.`);
+  return checar(
+    await supabase
+      .from("livros")
+      .update({ quantidade: qtd, disponiveis: qtd - emprestados })
+      .eq("id", livro.id)
+      .select()
+      .single(),
+  ) as Livro;
+}
+
+export async function trocarCapa(id: string, foto: Blob): Promise<Livro> {
+  const capa = await enviarCapa(foto);
+  return checar(
+    await supabase.from("livros").update({ capa_url: capa }).eq("id", id).select().single(),
+  ) as Livro;
+}
+
 export async function removerLivro(id: string): Promise<void> {
   const { error } = await supabase.from("livros").delete().eq("id", id);
   if (error) throw new Error(error.message);
