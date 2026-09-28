@@ -86,6 +86,7 @@ export type Database = {
       livros: {
         Row: {
           autor: string
+          capa_arquivo: string | null
           capa_url: string | null
           categoria: string
           codigo: string
@@ -99,6 +100,7 @@ export type Database = {
         }
         Insert: {
           autor?: string
+          capa_arquivo?: string | null
           capa_url?: string | null
           categoria?: string
           codigo?: string
@@ -112,6 +114,7 @@ export type Database = {
         }
         Update: {
           autor?: string
+          capa_arquivo?: string | null
           capa_url?: string | null
           categoria?: string
           codigo?: string
