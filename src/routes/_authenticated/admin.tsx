@@ -173,7 +173,7 @@ function Admin() {
                 accept="image/*"
                 capture="environment"
                 className="hidden"
-                onChange={(e) => void aoEscolherFoto(e.target.files?.[0])}
+                onChange={(e) => { void aoEscolherFoto(e.target.files?.[0]); e.target.value = ""; }}
               />
               <Button
                 type="button"
