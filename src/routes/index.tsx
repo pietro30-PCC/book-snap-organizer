@@ -194,7 +194,7 @@ function Catalogo() {
       </section>
 
       <main className="mx-auto max-w-6xl px-4 pt-6 pb-16">
-        <div className="glass z-20 rounded-2xl p-3 md:sticky md:top-[4.75rem]">
+        <div className="z-20 rounded-2xl border border-border/70 bg-card/95 p-3 shadow-[var(--shadow-paper)] backdrop-blur-xl md:sticky md:top-[4.75rem]">
           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
