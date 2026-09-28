@@ -10,6 +10,8 @@ export type Livro = {
   quantidade: number;
   disponiveis: number;
   capa_url: string | null;
+  /** Caminho do arquivo da capa no álbum; a partir dele o site gera o link de exibição. */
+  capa_arquivo: string | null;
   descricao: string | null;
   created_at: string;
 };
@@ -38,10 +40,60 @@ function checar<T>(resultado: { data: T | null; error: { message: string } | nul
   return resultado.data as T;
 }
 
+/** Lê o caminho do arquivo da capa a partir do que estiver guardado (caminho puro ou link). */
+function caminhoDaCapa(valor: string | null): string | null {
+  const bruto = (valor ?? "").trim();
+  if (!bruto) return null;
+  if (bruto.startsWith("livros/")) return bruto;
+  for (const marcador of ["/object/sign/capas/", "/object/public/capas/"]) {
+    const indice = bruto.indexOf(marcador);
+    if (indice !== -1) return bruto.slice(indice + marcador.length).split("?")[0];
+  }
+  return null;
+}
+
+/**
+ * O álbum de capas é privado, então cada foto precisa de um link próprio para aparecer.
+ * Em vez de guardar um link fixo (que pode envelhecer), geramos links novos a cada listagem.
+ */
+async function comLinksDeExibicao(livros: Livro[]): Promise<Livro[]> {
+  const caminhos = Array.from(
+    new Set(
+      livros
+        .map((livro) => livro.capa_arquivo ?? caminhoDaCapa(livro.capa_url))
+        .filter((caminho): caminho is string => Boolean(caminho)),
+    ),
+  );
+  if (caminhos.length === 0) return livros;
+
+  const links = new Map<string, string>();
+  for (let i = 0; i < caminhos.length; i += 100) {
+    const bloco = caminhos.slice(i, i + 100);
+    const { data, error } = await supabase.storage
+      .from("capas")
+      .createSignedUrls(bloco, 60 * 60 * 24 * 7);
+    if (error) {
+      console.error("[capas] não consegui gerar os links das fotos", error.message);
+      continue;
+    }
+    (data ?? []).forEach((item, indice) => {
+      if (item.signedUrl) links.set(bloco[indice], item.signedUrl);
+    });
+  }
+
+  return livros.map((livro) => {
+    const caminho = livro.capa_arquivo ?? caminhoDaCapa(livro.capa_url);
+    const link = caminho ? links.get(caminho) : undefined;
+    if (!link) return livro;
+    return { ...livro, capa_arquivo: caminho, capa_url: link };
+  });
+}
+
 export async function listarLivros(): Promise<Livro[]> {
-  return checar(
+  const livros = checar(
     await supabase.from("livros").select("*").order("created_at", { ascending: false }),
   ) as Livro[];
+  return comLinksDeExibicao(livros);
 }
 
 export async function listarAlunos(): Promise<Aluno[]> {
@@ -87,18 +139,24 @@ export async function buscarEmprestimoAbertoPorLivro(
   return (data as unknown as Emprestimo | null) ?? null;
 }
 
-export async function enviarCapa(arquivo: Blob): Promise<string | null> {
-  const nome = `livros/${crypto.randomUUID()}.jpg`;
-  const { error } = await supabase.storage.from("capas").upload(nome, arquivo, {
+/**
+ * Guarda a foto no álbum de capas e devolve o caminho do arquivo junto com um link de exibição.
+ * Avisa com erro quando algo dá errado, para nenhuma foto ser perdida sem que a pessoa veja.
+ */
+export async function enviarCapa(foto: Blob): Promise<{ arquivo: string; url: string }> {
+  const arquivo = `livros/${crypto.randomUUID()}.jpg`;
+  const { error } = await supabase.storage.from("capas").upload(arquivo, foto, {
     contentType: "image/jpeg",
     upsert: false,
   });
-  if (error) {
-    console.error("[capa] falha ao enviar", error.message);
-    return null;
-  }
-  const { data } = await supabase.storage.from("capas").createSignedUrl(nome, 60 * 60 * 24 * 3650);
-  return data?.signedUrl ?? null;
+  if (error) throw new Error(`Não consegui guardar a foto: ${error.message}`);
+
+  const { data, error: erroLink } = await supabase.storage
+    .from("capas")
+    .createSignedUrl(arquivo, 60 * 60 * 24 * 365);
+  if (erroLink || !data?.signedUrl) throw new Error("Não consegui gerar o link da foto.");
+
+  return { arquivo, url: data.signedUrl };
 }
 
 export type EntradaLivro = {
@@ -108,6 +166,7 @@ export type EntradaLivro = {
   isbn: string;
   quantidade: number;
   capa_url: string | null;
+  capa_arquivo?: string | null;
   descricao?: string;
 };
 
@@ -124,6 +183,7 @@ export async function criarLivro(entrada: EntradaLivro): Promise<Livro> {
         quantidade,
         disponiveis: quantidade,
         capa_url: entrada.capa_url,
+        capa_arquivo: entrada.capa_arquivo ?? null,
         descricao: entrada.descricao?.trim() || null,
       })
       .select()
@@ -144,6 +204,7 @@ export async function criarLivrosEmLote(entradas: EntradaLivro[]): Promise<Livro
       quantidade,
       disponiveis: quantidade,
       capa_url: e.capa_url,
+      capa_arquivo: e.capa_arquivo ?? null,
       descricao: e.descricao?.trim() || null,
     };
   });
@@ -176,11 +237,28 @@ export async function atualizarQuantidade(livro: Livro, novaQuantidade: number):
   ) as Livro;
 }
 
+/**
+ * Troca a foto de um livro. Se o envio falhar, mantém a foto anterior no lugar
+ * (assim uma falha nunca deixa o livro sem capa) e remove o arquivo antigo do armazenamento.
+ */
 export async function trocarCapa(id: string, foto: Blob): Promise<Livro> {
+  const { data: atual } = await supabase.from("livros").select("capa_arquivo").eq("id", id).maybeSingle();
+  const antiga = (atual?.capa_arquivo as string | null) ?? null;
+
   const capa = await enviarCapa(foto);
-  return checar(
-    await supabase.from("livros").update({ capa_url: capa }).eq("id", id).select().single(),
+  const livro = checar(
+    await supabase
+      .from("livros")
+      .update({ capa_url: capa.url, capa_arquivo: capa.arquivo })
+      .eq("id", id)
+      .select()
+      .single(),
   ) as Livro;
+
+  if (antiga && antiga !== capa.arquivo) {
+    await supabase.storage.from("capas").remove([antiga]);
+  }
+  return livro;
 }
 
 export async function removerLivro(id: string): Promise<void> {
