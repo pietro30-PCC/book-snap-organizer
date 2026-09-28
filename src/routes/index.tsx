@@ -310,9 +310,9 @@ function Catalogo() {
               </li>
             ))}
           </ul>
-        ) : filtrados.length === 0 ? {
+        ) : filtrados.length === 0 ? (
           <Vazio busca={busca} filtrosAtivos={filtrosAtivos} />
-        } : grupos ? (
+        ) : grupos ? (
           <div className="mt-2">
             {grupos.map(([nome, itens]) => (
               <Secao
