@@ -142,7 +142,7 @@ function Catalogo() {
 
   const grupos = useMemo(() => {
     const termo = busca.trim();
-    const deveAgrupar = categoria === "Todas" && !termo && !semCategoria;
+    const deveAgrupar = categoria === "Todas" && !termo;
     if (!deveAgrupar) return null;
 
     const mapa = new Map<string, Livro[]>();
