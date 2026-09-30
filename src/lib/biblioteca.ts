@@ -47,7 +47,7 @@ function caminhoDaCapa(valor: string | null): string | null {
   if (bruto.startsWith("livros/")) return bruto;
   for (const marcador of ["/object/sign/capas/", "/object/public/capas/"]) {
     const indice = bruto.indexOf(marcador);
-    if (indice !== -1) return bruto.slice(indice + marcador.length).split("?")[0];
+    if (indice !== -1) return bruto.slice(indice + marcador.length).split("?")[0] ?? null;
   }
   return null;
 }
@@ -77,7 +77,8 @@ async function comLinksDeExibicao(livros: Livro[]): Promise<Livro[]> {
       continue;
     }
     (data ?? []).forEach((item, indice) => {
-      if (item.signedUrl) links.set(bloco[indice], item.signedUrl);
+      const c = bloco[indice];
+      if (item.signedUrl && c) links.set(c, item.signedUrl);
     });
   }
 
