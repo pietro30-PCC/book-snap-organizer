@@ -119,11 +119,8 @@ function Lote() {
   const [criados, setCriados] = useState<Livro[]>([]);
   const [folhaAberta, setFolhaAberta] = useState(false);
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
-  const [usarIA, setUsarIA] = useState(false);
-  const usarIARef = useRef(false);
 
   linhasRef.current = linhas;
-  usarIARef.current = usarIA;
 
   // Retoma a conferência (só os dados digitados; as fotos precisam ser enviadas de novo).
   useEffect(() => {
@@ -413,10 +410,6 @@ function Lote() {
           Dica: para melhor resultado, fotografe a <strong>contracapa com o código de barras</strong>{" "}
           visível — assim os dados vêm do cadastro oficial do livro.
         </p>
-        <label className="mt-3 flex max-w-2xl items-center gap-2 text-sm">
-          <Checkbox checked={usarIA} onCheckedChange={(v) => setUsarIA(v === true)} />
-          Usar IA nos livros que não forem reconhecidos (gasta créditos)
-        </label>
 
         <section
           className="surface-paper mt-8 rounded-xl border border-dashed border-border p-6 text-center"
