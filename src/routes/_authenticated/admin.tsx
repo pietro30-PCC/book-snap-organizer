@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { Camera, Loader2, Minus, Pencil, Plus, Sparkles, Tag, Trash2 } from "lucide-react";
 import {
   Dialog,
@@ -30,7 +29,6 @@ import {
   type Livro,
 } from "@/lib/biblioteca";
 import { prepararFoto } from "@/lib/imagem";
-import { lerCapaLivro } from "@/lib/ocr.functions";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({
@@ -56,7 +54,6 @@ const VAZIO = { titulo: "", autor: "", categoria: "", isbn: "", quantidade: "1" 
 function Admin() {
   const queryClient = useQueryClient();
   const inputFoto = useRef<HTMLInputElement>(null);
-  const lerCapa = useServerFn(lerCapaLivro);
 
   const [form, setForm] = useState(VAZIO);
   const [foto, setFoto] = useState<{ dataUrl: string; blob: Blob } | null>(null);
@@ -76,7 +73,8 @@ function Admin() {
         categoria: form.categoria,
         isbn: form.isbn,
         quantidade: Number(form.quantidade) || 1,
-        capa_url: capa,
+        capa_url: capa?.url ?? null,
+        capa_arquivo: capa?.arquivo ?? null,
       });
     },
     onSuccess: (livro) => {
@@ -107,10 +105,8 @@ function Admin() {
       setFoto(preparada);
       const { lerLivroGratis } = await import("@/lib/leituraGratis");
       const gratis = await lerLivroGratis(preparada.blob);
-      const dados =
-        gratis?.dados.titulo
-          ? gratis.dados
-          : await lerCapa({ data: { imagemDataUrl: preparada.dataUrl } });
+      const dados = gratis?.dados ?? { titulo: "", autor: "", categoria: "", isbn: "" };
+      if (!gratis?.dados.titulo) toast.info("Não reconheci a capa. Digite o título e o autor.");
       setForm((atual) => ({
         titulo: dados.titulo || atual.titulo,
         autor: dados.autor || atual.autor,

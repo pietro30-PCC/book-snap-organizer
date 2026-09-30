@@ -43,7 +43,6 @@ import {
   type Livro,
 } from "@/lib/biblioteca";
 import { prepararFotoLeve } from "@/lib/imagem";
-import { lerCapaLivro } from "@/lib/ocr.functions";
 import { comNovaTentativa, rodarFila, type Fila } from "@/lib/fila";
 import { blobParaDataUrl, lerFoto, limparFotos, removerFoto, salvarFoto } from "@/lib/fotosLote";
 import { lerLivroGratis } from "@/lib/leituraGratis";
@@ -103,7 +102,6 @@ const SELOS: Record<Situacao, { texto: string; classe: string }> = {
 
 function Lote() {
   const queryClient = useQueryClient();
-  const lerCapa = useServerFn(lerCapaLivro);
   const inputFotos = useRef<HTMLInputElement>(null);
   const inputPasta = useRef<HTMLInputElement>(null);
   const filaRef = useRef<Fila | null>(null);
@@ -121,11 +119,8 @@ function Lote() {
   const [criados, setCriados] = useState<Livro[]>([]);
   const [folhaAberta, setFolhaAberta] = useState(false);
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
-  const [usarIA, setUsarIA] = useState(false);
-  const usarIARef = useRef(false);
 
   linhasRef.current = linhas;
-  usarIARef.current = usarIA;
 
   // Retoma a conferência (só os dados digitados; as fotos precisam ser enviadas de novo).
   useEffect(() => {
@@ -199,14 +194,9 @@ function Lote() {
         const blob = await lerFoto(id);
         if (!blob) throw new Error("A foto desta linha não está mais no navegador.");
         const gratis = await lerLivroGratis(blob).catch(() => null);
-        let dados = gratis?.dados;
-        let certo = gratis?.certo ?? false;
-        if ((!dados || !dados.titulo) && usarIARef.current) {
-          const dataUrl = await blobParaDataUrl(blob);
-          dados = await comNovaTentativa(() => lerCapa({ data: { imagemDataUrl: dataUrl } }));
-          certo = true;
-        }
-        if (!dados || (!dados.titulo && !dados.isbn))
+        const dados = gratis?.dados;
+        const certo = gratis?.certo ?? false;
+                if (!dados || (!dados.titulo && !dados.isbn))
           throw new Error("Não reconheci este livro. Digite os dados.");
         let situacao = await classificar(id, dados.titulo, dados.isbn);
         if (situacao === "ok" && (!certo || !dados.titulo)) situacao = "conferir";
@@ -228,7 +218,7 @@ function Lote() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [atualizar, lerCapa],
+    [atualizar],
   );
 
   /** Fila com no máximo 3 leituras ao mesmo tempo, com pausa e nova tentativa automática. */
@@ -344,7 +334,7 @@ function Lote() {
         const entradas: EntradaLivro[] = [];
 
         // Envio das capas com concorrência limitada.
-        const capas = new Map<string, string | null>();
+        const capas = new Map<string, { arquivo: string; url: string } | null>();
         const filaCapas = rodarFila(
           bloco,
           async (linha) => {
@@ -363,7 +353,8 @@ function Lote() {
             categoria: linha.categoria,
             isbn: linha.isbn,
             quantidade: Number(linha.quantidade) || 1,
-            capa_url: capas.get(linha.id) ?? null,
+            capa_url: capas.get(linha.id)?.url ?? null,
+            capa_arquivo: capas.get(linha.id)?.arquivo ?? null,
             descricao: linha.descricao,
           });
         }
@@ -419,10 +410,6 @@ function Lote() {
           Dica: para melhor resultado, fotografe a <strong>contracapa com o código de barras</strong>{" "}
           visível — assim os dados vêm do cadastro oficial do livro.
         </p>
-        <label className="mt-3 flex max-w-2xl items-center gap-2 text-sm">
-          <Checkbox checked={usarIA} onCheckedChange={(v) => setUsarIA(v === true)} />
-          Usar IA nos livros que não forem reconhecidos (gasta créditos)
-        </label>
 
         <section
           className="surface-paper mt-8 rounded-xl border border-dashed border-border p-6 text-center"
