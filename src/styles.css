@@ -261,13 +261,10 @@
 
 /* Capas desenhadas para livros sem foto: gradientes derivados dos tokens */
 @utility capa-falsa {
-  display: grid;
-  place-items: center;
   color: var(--color-primary-foreground);
   font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  text-shadow: 0 1px 14px color-mix(in oklab, black 30%, transparent);
+  box-shadow: inset 5px 0 color-mix(in oklab, var(--color-foreground) 20%, transparent);
+  text-shadow: 0 1px 8px color-mix(in oklab, var(--color-foreground) 30%, transparent);
 }
 
 @utility capa-a {

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { NavBiblioteca } from "@/components/NavBiblioteca";
+import { CapaLivro } from "@/components/CapaLivro";
 import { EtiquetaLivro } from "@/components/EtiquetaLivro";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,8 @@ export const Route = createFileRoute("/")({
         property: "og:description",
         content: "Pesquise livros e veja a disponibilidade de exemplares da biblioteca da escola.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Catalogo,
@@ -63,23 +66,6 @@ export const Route = createFileRoute("/")({
 
 type Ordem = "titulo" | "autor" | "novos" | "disponiveis";
 type Modo = "grade" | "lista";
-
-const CAPAS = ["capa-a", "capa-b", "capa-c", "capa-d", "capa-e"] as const;
-
-function tomDe(codigo: string) {
-  let soma = 0;
-  for (let i = 0; i < codigo.length; i += 1) soma += codigo.charCodeAt(i);
-  return CAPAS[soma % CAPAS.length];
-}
-
-function iniciais(titulo: string) {
-  const palavras = titulo
-    .replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-  const sigla = palavras.slice(0, 2).map((p) => p[0]!.toUpperCase()).join("");
-  return sigla || "?";
-}
 
 function Catalogo() {
 
@@ -411,34 +397,6 @@ function SeloDisponibilidade({ livro }: { livro: Livro }) {
   );
 }
 
-function Capa({
-  livro,
-  className,
-  sigla = false,
-}: {
-  livro: Livro;
-  className?: string;
-  sigla?: boolean;
-}) {
-  if (livro.capa_url) {
-    return (
-      <img
-        src={livro.capa_url}
-        alt={`Capa de ${livro.titulo}`}
-        loading="lazy"
-        className={cn("size-full object-cover", className)}
-      />
-    );
-  }
-  return (
-    <span
-      className={cn("capa-falsa size-full", tomDe(livro.codigo), sigla ? "text-sm" : "text-3xl", className)}
-    >
-      {iniciais(livro.titulo)}
-    </span>
-  );
-}
-
 function CardGrade({ livro, onAbrir }: { livro: Livro; onAbrir: (l: Livro) => void }) {
   return (
     <button
@@ -449,9 +407,8 @@ function CardGrade({ livro, onAbrir }: { livro: Livro; onAbrir: (l: Livro) => vo
     >
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
         <span className="block size-full transition-transform duration-500 group-hover:scale-[1.05]">
-          <Capa livro={livro} />
+          <CapaLivro livro={livro} />
         </span>
-        <span className="pointer-events-none absolute inset-0 bg-linear-to-t from-black/25 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
       </div>
 
       <div className="flex flex-1 flex-col gap-1 p-3">
@@ -481,7 +438,7 @@ function CardLista({ livro, onAbrir }: { livro: Livro; onAbrir: (l: Livro) => vo
       className="surface-paper card-lift group flex w-full items-center gap-3 rounded-xl p-2.5 text-left"
     >
       <div className="h-16 w-11 shrink-0 overflow-hidden rounded-lg bg-muted">
-        <Capa livro={livro} sigla />
+        <CapaLivro livro={livro} pequena />
       </div>
 
       <div className="min-w-0 flex-1">
@@ -632,7 +589,7 @@ function FichaLivro({
 
         <div className="flex gap-4">
           <div className="h-44 w-30 shrink-0 overflow-hidden rounded-xl bg-muted shadow-[var(--shadow-paper)]">
-            <Capa livro={livro} sigla />
+            <CapaLivro livro={livro} />
           </div>
 
           <dl className="min-w-0 flex-1 space-y-1.5 text-sm">
