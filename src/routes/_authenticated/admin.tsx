@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { NavBiblioteca } from "@/components/NavBiblioteca";
+import { CapaLivro } from "@/components/CapaLivro";
 import { EtiquetaLivro } from "@/components/EtiquetaLivro";
 import { CodigoBarras } from "@/components/CodigoBarras";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,8 @@ export const Route = createFileRoute("/_authenticated/admin")({
         property: "og:description",
         content: "Cadastro de livros por foto com OCR e etiquetas com código de barras.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: Admin,
@@ -131,7 +134,7 @@ function Admin() {
       <main className="mx-auto max-w-6xl px-4 py-10">
         <h1 className="text-4xl font-semibold">Painel administrativo</h1>
         <p className="mt-2 text-muted-foreground">
-          Comece do zero: fotografe a capa, a IA preenche os dados e o sistema gera um código de
+          Comece do zero: fotografe a capa, confira os dados e o sistema gera um código de
           barras para imprimir.
         </p>
 
@@ -263,14 +266,7 @@ function Admin() {
               {livros.map((livro) => (
                 <li key={livro.id} className="surface-paper flex gap-4 rounded-xl p-4">
                   <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
-                    {livro.capa_url ? (
-                      <img
-                        src={livro.capa_url}
-                        alt={`Capa de ${livro.titulo}`}
-                        loading="lazy"
-                        className="size-full object-cover"
-                      />
-                    ) : null}
+                    <CapaLivro livro={livro} pequena />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold">{livro.titulo}</p>
@@ -431,9 +427,11 @@ function EditarLivro({ livro, onFechar }: { livro: Livro | null; onFechar: () =>
         </DialogHeader>
         <div className="flex items-start gap-4">
           <div className="h-36 w-26 shrink-0 overflow-hidden rounded-md bg-muted" style={{ width: 104 }}>
-            {(novaFoto?.dataUrl || livro?.capa_url) && (
-              <img src={novaFoto?.dataUrl || livro?.capa_url || ""} alt="Capa" className="size-full object-cover" />
-            )}
+            {novaFoto ? (
+              <img src={novaFoto.dataUrl} alt="Nova capa" className="size-full object-cover" />
+            ) : livro ? (
+              <CapaLivro livro={livro} pequena />
+            ) : null}
           </div>
           <div className="grid gap-4">
             <input

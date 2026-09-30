@@ -85,7 +85,7 @@ async function comLinksDeExibicao(livros: Livro[]): Promise<Livro[]> {
   return livros.map((livro) => {
     const caminho = livro.capa_arquivo ?? caminhoDaCapa(livro.capa_url);
     const link = caminho ? links.get(caminho) : undefined;
-    if (!link) return livro;
+    if (!link) return caminho ? { ...livro, capa_url: null } : livro;
     return { ...livro, capa_arquivo: caminho, capa_url: link };
   });
 }
