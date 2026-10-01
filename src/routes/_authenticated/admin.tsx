@@ -106,20 +106,9 @@ function Admin() {
       setLendo(true);
       const preparada = await prepararFoto(arquivo, 2048);
       setFoto(preparada);
-      const { lerLivroGratis } = await import("@/lib/leituraGratis");
-      const gratis = await lerLivroGratis(preparada.blob);
-      const dados = gratis?.dados ?? { titulo: "", autor: "", categoria: "", isbn: "" };
-      if (!gratis?.dados.titulo) toast.info("Não reconheci a capa. Digite o título e o autor.");
-      setForm((atual) => ({
-        titulo: dados.titulo || atual.titulo,
-        autor: dados.autor || atual.autor,
-        categoria: dados.categoria || atual.categoria,
-        isbn: dados.isbn || atual.isbn,
-        quantidade: atual.quantidade,
-      }));
       setConfirmar(true);
     } catch (erro) {
-      toast.error(erro instanceof Error ? erro.message : "Não consegui ler a foto.");
+      toast.error(erro instanceof Error ? erro.message : "Não consegui abrir a foto.");
     } finally {
       setLendo(false);
     }
@@ -309,8 +298,8 @@ function Admin() {
       <Dialog open={confirmar} onOpenChange={setConfirmar}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Livro reconhecido</DialogTitle>
-            <DialogDescription>Confira os dados e diga quantos exemplares vocês têm.</DialogDescription>
+            <DialogTitle>Dados do livro</DialogTitle>
+            <DialogDescription>Digite o título, o ISBN e o autor, e diga quantos exemplares vocês têm.</DialogDescription>
           </DialogHeader>
           <div className="flex gap-4">
             {foto && (
@@ -318,6 +307,7 @@ function Admin() {
             )}
             <div className="grid flex-1 gap-3">
               <Campo id="c-titulo" rotulo="Título" valor={form.titulo} onChange={(v) => setForm({ ...form, titulo: v })} />
+              <Campo id="c-isbn" rotulo="ISBN" valor={form.isbn} onChange={(v) => setForm({ ...form, isbn: v })} />
               <Campo id="c-autor" rotulo="Autor" valor={form.autor} onChange={(v) => setForm({ ...form, autor: v })} />
             </div>
           </div>
