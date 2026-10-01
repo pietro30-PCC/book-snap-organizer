@@ -45,7 +45,6 @@ import {
 import { prepararFotoLeve } from "@/lib/imagem";
 import { comNovaTentativa, rodarFila, type Fila } from "@/lib/fila";
 import { blobParaDataUrl, lerFoto, limparFotos, removerFoto, salvarFoto } from "@/lib/fotosLote";
-import { lerLivroGratis } from "@/lib/leituraGratis";
 
 export const Route = createFileRoute("/_authenticated/lote")({
   head: () => ({
