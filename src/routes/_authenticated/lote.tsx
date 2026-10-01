@@ -45,7 +45,6 @@ import {
 import { prepararFotoLeve } from "@/lib/imagem";
 import { comNovaTentativa, rodarFila, type Fila } from "@/lib/fila";
 import { blobParaDataUrl, lerFoto, limparFotos, removerFoto, salvarFoto } from "@/lib/fotosLote";
-import { lerLivroGratis } from "@/lib/leituraGratis";
 
 export const Route = createFileRoute("/_authenticated/lote")({
   head: () => ({
@@ -193,21 +192,8 @@ function Lote() {
       try {
         const blob = await lerFoto(id);
         if (!blob) throw new Error("A foto desta linha não está mais no navegador.");
-        const gratis = await lerLivroGratis(blob).catch(() => null);
-        const dados = gratis?.dados;
-        const certo = gratis?.certo ?? false;
-                if (!dados || (!dados.titulo && !dados.isbn))
-          throw new Error("Não reconheci este livro. Digite os dados.");
-        let situacao = await classificar(id, dados.titulo, dados.isbn);
-        if (situacao === "ok" && (!certo || !dados.titulo)) situacao = "conferir";
-        atualizar(id, {
-          titulo: dados.titulo,
-          autor: dados.autor,
-          categoria: dados.categoria,
-          isbn: dados.isbn,
-          descricao: dados.descricao ?? "",
-          situacao,
-        });
+        // Sem leitura automática: a bibliotecária digita título, ISBN e autor.
+        atualizar(id, { situacao: "conferir" });
       } catch (erro) {
         atualizar(id, {
           situacao: "falhou",
