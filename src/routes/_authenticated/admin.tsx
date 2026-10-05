@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { Camera, Loader2, Minus, Pencil, Plus, Sparkles, Tag, Trash2 } from "lucide-react";
+import { Camera, ImageDown, Loader2, Minus, Pencil, Plus, RefreshCw, Sparkles, Tag, Trash2 } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,7 @@ import {
   type Livro,
 } from "@/lib/biblioteca";
 import { prepararFoto } from "@/lib/imagem";
+import { buscarCapaLivro } from "@/lib/capas.functions";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({
@@ -64,6 +66,9 @@ function Admin() {
   const [etiqueta, setEtiqueta] = useState<Livro | null>(null);
   const [confirmar, setConfirmar] = useState(false);
   const [editando, setEditando] = useState<Livro | null>(null);
+  const [buscandoCapas, setBuscandoCapas] = useState<Set<string>>(new Set());
+  const [progressoCapas, setProgressoCapas] = useState<{ atual: number; total: number } | null>(null);
+  const buscarCapa = useServerFn(buscarCapaLivro);
 
   const { data: livros = [] } = useQuery({ queryKey: ["livros"], queryFn: listarLivros });
 
@@ -115,6 +120,67 @@ function Admin() {
   }
 
   const exemplares = livros.reduce((s, l) => s + l.quantidade, 0);
+
+  function blobDaBusca(base64: string, tipo: string) {
+    const binario = atob(base64);
+    const bytes = new Uint8Array(binario.length);
+    for (let i = 0; i < binario.length; i += 1) bytes[i] = binario.charCodeAt(i);
+    return new Blob([bytes], { type: tipo });
+  }
+
+  async function atualizarCapaEncontrada(livro: Livro, silencioso = false) {
+    setBuscandoCapas((atuais) => new Set(atuais).add(livro.id));
+    try {
+      const resultado = await buscarCapa({
+        data: {
+          titulo: livro.titulo,
+          autor: livro.autor,
+          isbn: livro.isbn ?? "",
+          descricao: livro.descricao ?? "",
+        },
+      });
+      if (!resultado.encontrada) {
+        if (!silencioso) toast.info("Não encontrei uma capa confiável para este livro.");
+        return false;
+      }
+      await trocarCapa(livro.id, blobDaBusca(resultado.base64, resultado.tipo));
+      await queryClient.invalidateQueries({ queryKey: ["livros"] });
+      if (!silencioso) toast.success("Capa encontrada e salva na biblioteca.");
+      return true;
+    } catch (erro) {
+      if (!silencioso)
+        toast.error(erro instanceof Error ? erro.message : "Não consegui atualizar a capa.");
+      return false;
+    } finally {
+      setBuscandoCapas((atuais) => {
+        const proximos = new Set(atuais);
+        proximos.delete(livro.id);
+        return proximos;
+      });
+    }
+  }
+
+  async function atualizarCapasFaltantes() {
+    const faltantes = livros.filter((livro) => !livro.capa_url);
+    if (!faltantes.length) {
+      toast.success("Todos os livros já têm capa.");
+      return;
+    }
+    setProgressoCapas({ atual: 0, total: faltantes.length });
+    let encontradas = 0;
+    for (let i = 0; i < faltantes.length; i += 1) {
+      const livro = faltantes[i];
+      if (livro && (await atualizarCapaEncontrada(livro, true))) encontradas += 1;
+      setProgressoCapas({ atual: i + 1, total: faltantes.length });
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+    }
+    setProgressoCapas(null);
+    toast.success(
+      encontradas
+        ? `${encontradas} ${encontradas === 1 ? "capa encontrada" : "capas encontradas"}.`
+        : "Nenhuma capa confiável foi encontrada.",
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -245,7 +311,28 @@ function Admin() {
         </section>
 
         <section className="mt-10">
-          <h2 className="text-2xl font-semibold">Acervo cadastrado</h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold">Acervo cadastrado</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                As capas são procuradas gratuitamente por ISBN, título e autor.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              disabled={progressoCapas !== null}
+              onClick={() => void atualizarCapasFaltantes()}
+            >
+              {progressoCapas ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : (
+                <ImageDown className="mr-2 size-4" />
+              )}
+              {progressoCapas
+                ? `Buscando ${progressoCapas.atual}/${progressoCapas.total}`
+                : "Atualizar capas faltantes"}
+            </Button>
+          </div>
           {livros.length === 0 ? (
             <p className="mt-3 text-muted-foreground">
               Nenhum livro ainda. Cadastre o primeiro acima.
@@ -253,8 +340,8 @@ function Admin() {
           ) : (
             <ul className="mt-4 grid gap-4 md:grid-cols-2">
               {livros.map((livro) => (
-                <li key={livro.id} className="surface-paper flex gap-4 rounded-xl p-4">
-                  <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
+                <li key={livro.id} className="surface-paper card-lift flex gap-4 rounded-xl p-4">
+                  <div className="book-depth h-24 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
                     <CapaLivro livro={livro} pequena />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -268,12 +355,25 @@ function Admin() {
                         {livro.disponiveis}/{livro.quantidade} disponíveis
                       </Badge>
                     </div>
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <Button size="sm" variant="secondary" onClick={() => setEtiqueta(livro)}>
                         <Tag className="mr-1.5 size-3.5" /> Etiqueta
                       </Button>
                       <Button size="sm" variant="secondary" onClick={() => setEditando(livro)}>
                         <Pencil className="mr-1.5 size-3.5" /> Editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={buscandoCapas.has(livro.id)}
+                        onClick={() => void atualizarCapaEncontrada(livro)}
+                      >
+                        {buscandoCapas.has(livro.id) ? (
+                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-1.5 size-3.5" />
+                        )}
+                        Buscar capa
                       </Button>
                       <Button
                         size="sm"

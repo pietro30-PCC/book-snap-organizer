@@ -403,9 +403,9 @@ function CardGrade({ livro, onAbrir }: { livro: Livro; onAbrir: (l: Livro) => vo
       type="button"
       onClick={() => onAbrir(livro)}
       aria-label={`Ver detalhes de ${livro.titulo}`}
-      className="surface-paper card-lift group flex h-full w-full flex-col overflow-hidden rounded-2xl text-left"
+      className="surface-paper book-depth group flex h-full w-full flex-col overflow-hidden rounded-2xl text-left"
     >
-      <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
+      <div className="cover-sheen relative aspect-[2/3] w-full overflow-hidden bg-muted">
         <span className="block size-full transition-transform duration-500 group-hover:scale-[1.05]">
           <CapaLivro livro={livro} />
         </span>
@@ -435,9 +435,9 @@ function CardLista({ livro, onAbrir }: { livro: Livro; onAbrir: (l: Livro) => vo
       type="button"
       onClick={() => onAbrir(livro)}
       aria-label={`Ver detalhes de ${livro.titulo}`}
-      className="surface-paper card-lift group flex w-full items-center gap-3 rounded-xl p-2.5 text-left"
+      className="surface-paper card-lift group flex w-full items-center gap-3 rounded-xl p-2.5 text-left [perspective:900px]"
     >
-      <div className="h-16 w-11 shrink-0 overflow-hidden rounded-lg bg-muted">
+      <div className="book-depth h-16 w-11 shrink-0 overflow-hidden rounded-lg bg-muted">
         <CapaLivro livro={livro} pequena />
       </div>
 
