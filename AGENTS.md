@@ -10,3 +10,5 @@
 <!-- LOVABLE:END -->
 
 Use `CapaLivro` nas páginas que exibem livros; ela mostra a foto vinculada ou uma capa tipográfica com o título quando a foto não existe ou não carrega, evitando capas incorretas.
+
+Cover discovery runs in an authenticated server function against free public catalogs; the browser persists only validated results through the existing private cover-storage flow, keeping external image URLs out of book records.
