@@ -54,9 +54,15 @@ function corresponde(candidato: Candidato, entrada: z.infer<typeof Entrada>) {
 
 async function buscarGoogle(entrada: z.infer<typeof Entrada>): Promise<Candidato[]> {
   const isbn = isbnLimpo(entrada.isbn);
+  const contexto = entrada.descricao
+    .split(/\s+/)
+    .map((palavra) => palavra.replace(/[^\p{L}\p{N}]/gu, ""))
+    .filter((palavra) => palavra.length >= 5)
+    .slice(0, 4)
+    .join(" ");
   const consulta = isbn
     ? `isbn:${isbn}`
-    : `intitle:${entrada.titulo}${entrada.autor ? ` inauthor:${entrada.autor}` : ""}`;
+    : `intitle:${entrada.titulo}${entrada.autor ? ` inauthor:${entrada.autor}` : ""}${contexto ? ` ${contexto}` : ""}`;
   try {
     const resposta = await fetch(
       `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(consulta)}&maxResults=8`,
