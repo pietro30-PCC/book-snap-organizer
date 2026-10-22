@@ -39,8 +39,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
-import { atualizarLivro, listarLivros, type Livro } from "@/lib/biblioteca";
+import { atualizarLivro, listarLivros, trocarCapa, type Livro } from "@/lib/biblioteca";
 import { gerarDescricaoLivro } from "@/lib/descricao.functions";
+import { buscarCapaLivro } from "@/lib/capas.functions";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -554,6 +555,39 @@ function FichaLivro({
   const queryClient = useQueryClient();
   const gerar = useServerFn(gerarDescricaoLivro);
   const [gerando, setGerando] = useState(false);
+  const buscarCapa = useServerFn(buscarCapaLivro);
+  const [buscando, setBuscando] = useState(false);
+
+  async function buscarCapaNet() {
+    if (!livro) return;
+    setBuscando(true);
+    try {
+      const r = await buscarCapa({
+        data: {
+          titulo: livro.titulo,
+          autor: livro.autor,
+          isbn: livro.isbn ?? "",
+          descricao: livro.descricao ?? "",
+        },
+      });
+      if (!r.encontrada) {
+        toast.info("Não encontrei uma capa confiável na internet para este livro.");
+        return;
+      }
+      const bin = atob(r.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+      await trocarCapa(livro.id, new Blob([bytes], { type: r.tipo }));
+      await queryClient.invalidateQueries({ queryKey: ["livros"] });
+      toast.success("Capa encontrada e salva!");
+      onFechar();
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não consegui buscar a capa.");
+    } finally {
+      setBuscando(false);
+    }
+  }
+
 
   if (!livro) return null;
 
@@ -638,6 +672,10 @@ function FichaLivro({
             </Button>
             <Button asChild variant="secondary">
               <Link to="/emprestimos">Emprestar este livro</Link>
+            </Button>
+            <Button variant="secondary" onClick={() => void buscarCapaNet()} disabled={buscando}>
+              {buscando ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Wand2 className="mr-2 size-4" />}
+              {livro.capa_url ? "Trocar capa pela internet" : "Buscar capa na internet"}
             </Button>
             {!livro.descricao ? (
               <Button onClick={() => void gerarDescricao()} disabled={gerando}>
