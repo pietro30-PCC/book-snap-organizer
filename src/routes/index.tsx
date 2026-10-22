@@ -661,6 +661,12 @@ function FichaLivro({
           </div>
         ) : null}
       </DialogContent>
+      <SeletorCapa
+        livro={livro}
+        aberto={escolhendoCapa}
+        onFechar={() => setEscolhendoCapa(false)}
+        onSalvo={onFechar}
+      />
     </Dialog>
   );
 }
