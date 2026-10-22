@@ -555,38 +555,9 @@ function FichaLivro({
   const queryClient = useQueryClient();
   const gerar = useServerFn(gerarDescricaoLivro);
   const [gerando, setGerando] = useState(false);
-  const buscarCapa = useServerFn(buscarCapaLivro);
-  const [buscando, setBuscando] = useState(false);
-
-  async function buscarCapaNet() {
-    if (!livro) return;
-    setBuscando(true);
-    try {
-      const r = await buscarCapa({
-        data: {
-          titulo: livro.titulo,
-          autor: livro.autor,
-          isbn: livro.isbn ?? "",
-          descricao: livro.descricao ?? "",
-        },
-      });
-      if (!r.encontrada) {
-        toast.info("Não encontrei uma capa confiável na internet para este livro.");
-        return;
-      }
-      const bin = atob(r.base64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
-      await trocarCapa(livro.id, new Blob([bytes], { type: r.tipo }));
-      await queryClient.invalidateQueries({ queryKey: ["livros"] });
-      toast.success("Capa encontrada e salva!");
-      onFechar();
-    } catch (erro) {
-      toast.error(erro instanceof Error ? erro.message : "Não consegui buscar a capa.");
-    } finally {
-      setBuscando(false);
-    }
-  }
+  const [escolhendoCapa, setEscolhendoCapa] = useState(false);
+  const buscando = false;
+  const buscarCapaNet = async () => setEscolhendoCapa(true);
 
 
   if (!livro) return null;
