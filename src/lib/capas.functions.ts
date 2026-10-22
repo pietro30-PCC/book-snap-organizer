@@ -103,7 +103,7 @@ async function baixarImagem(url: string) {
     if (bytes.byteLength < 2_000 || bytes.byteLength > 8_000_000) return null;
     let bin = "";
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { base64: btoa(bin), tipo: tipo.split(";")[0] };
+    return { base64: btoa(bin), tipo: tipo.split(";")[0] ?? "image/jpeg" };
   } catch {
     return null;
   }
