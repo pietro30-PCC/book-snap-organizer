@@ -41,6 +41,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { atualizarLivro, listarLivros, trocarCapa, type Livro } from "@/lib/biblioteca";
 import { gerarDescricaoLivro } from "@/lib/descricao.functions";
+import { SeletorCapa } from "@/components/SeletorCapa";
 import { buscarCapaLivro } from "@/lib/capas.functions";
 import { cn } from "@/lib/utils";
 
