@@ -8,139 +8,131 @@ const Entrada = z.object({
   isbn: z.string().trim().max(32).default(""),
   descricao: z.string().trim().max(1200).default(""),
 });
+type EntradaT = z.infer<typeof Entrada>;
 
-type Candidato = {
-  titulo: string;
-  autores: string[];
-  isbn: string[];
-  imagem: string;
-};
+export type CapaCandidata = { url: string; titulo: string; fonte: string };
 
-function normalizar(valor: string) {
-  return valor
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
+
+function isbnLimpo(v: string) {
+  return v.replace(/[^0-9Xx]/g, "").toUpperCase();
 }
 
-function palavras(valor: string) {
-  return new Set(normalizar(valor).split(" ").filter((p) => p.length > 1));
-}
-
-function semelhanca(a: string, b: string) {
-  const aa = palavras(a);
-  const bb = palavras(b);
-  if (!aa.size || !bb.size) return 0;
-  let comuns = 0;
-  for (const p of aa) if (bb.has(p)) comuns += 1;
-  return (2 * comuns) / (aa.size + bb.size);
-}
-
-function isbnLimpo(valor: string) {
-  return valor.replace(/[^0-9Xx]/g, "").toUpperCase();
-}
-
-function corresponde(candidato: Candidato, entrada: z.infer<typeof Entrada>) {
-  const isbn = isbnLimpo(entrada.isbn);
-  if (isbn) return candidato.isbn.some((i) => isbnLimpo(i) === isbn);
-  const titulo = semelhanca(entrada.titulo, candidato.titulo);
-  if (titulo < 0.72) return false;
-  if (!entrada.autor.trim()) return titulo >= 0.88;
-  return candidato.autores.some((autor) => semelhanca(entrada.autor, autor) >= 0.45);
-}
-
-async function buscarGoogle(entrada: z.infer<typeof Entrada>): Promise<Candidato[]> {
-  const isbn = isbnLimpo(entrada.isbn);
-  const contexto = entrada.descricao
-    .split(/\s+/)
-    .map((palavra) => palavra.replace(/[^\p{L}\p{N}]/gu, ""))
-    .filter((palavra) => palavra.length >= 5)
-    .slice(0, 4)
-    .join(" ");
-  const consulta = isbn
-    ? `isbn:${isbn}`
-    : `intitle:${entrada.titulo}${entrada.autor ? ` inauthor:${entrada.autor}` : ""}${contexto ? ` ${contexto}` : ""}`;
+async function buscarImagensWeb(consulta: string): Promise<CapaCandidata[]> {
   try {
-    const resposta = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(consulta)}&maxResults=8`,
+    const pagina = await fetch(
+      `https://duckduckgo.com/?q=${encodeURIComponent(consulta)}&iar=images&iax=images&ia=images`,
+      { headers: { "User-Agent": UA } },
     );
-    if (!resposta.ok) return [];
-    const json = (await resposta.json()) as {
-      items?: Array<{
-        volumeInfo?: {
-          title?: string;
-          authors?: string[];
-          industryIdentifiers?: Array<{ identifier?: string }>;
-          imageLinks?: { extraLarge?: string; large?: string; medium?: string; thumbnail?: string };
-        };
-      }>;
+    const html = await pagina.text();
+    const vqd = (html.match(/vqd=["']?([\d-]+)/) ?? [])[1];
+    if (!vqd) return [];
+    const r = await fetch(
+      `https://duckduckgo.com/i.js?l=br-pt&o=json&q=${encodeURIComponent(consulta)}&vqd=${vqd}&f=,,,,,&p=1`,
+      { headers: { "User-Agent": UA, Referer: "https://duckduckgo.com/" } },
+    );
+    if (!r.ok) return [];
+    const json = (await r.json()) as {
+      results?: Array<{ image?: string; title?: string; url?: string; width?: number; height?: number }>;
     };
-    return (json.items ?? []).flatMap((item) => {
-      const info = item.volumeInfo;
-      const imagem = info?.imageLinks?.extraLarge ?? info?.imageLinks?.large ?? info?.imageLinks?.medium ?? info?.imageLinks?.thumbnail;
-      if (!info?.title || !imagem) return [];
-      return [{
-        titulo: info.title,
-        autores: info.authors ?? [],
-        isbn: (info.industryIdentifiers ?? []).flatMap((i) => i.identifier ?? []),
-        imagem: imagem.replace(/^http:/, "https:").replace("&edge=curl", ""),
-      }];
-    });
+    return (json.results ?? [])
+      .filter((x) => x.image?.startsWith("https://") && (!x.width || !x.height || x.height >= x.width * 0.9))
+      .slice(0, 12)
+      .map((x) => {
+        let fonte = "internet";
+        try {
+          fonte = new URL(x.url ?? x.image!).hostname.replace(/^www\./, "");
+        } catch {
+          /* ignora */
+        }
+        return { url: x.image!, titulo: x.title ?? "", fonte };
+      });
   } catch {
     return [];
   }
 }
 
-async function buscarOpenLibrary(entrada: z.infer<typeof Entrada>): Promise<Candidato[]> {
-  const isbn = isbnLimpo(entrada.isbn);
-  const parametros = isbn
+async function buscarOpenLibrary(e: EntradaT): Promise<CapaCandidata[]> {
+  const isbn = isbnLimpo(e.isbn);
+  const p = isbn
     ? `isbn=${encodeURIComponent(isbn)}`
-    : `title=${encodeURIComponent(entrada.titulo)}&author=${encodeURIComponent(entrada.autor)}`;
+    : `title=${encodeURIComponent(e.titulo)}&author=${encodeURIComponent(e.autor)}`;
   try {
-    const resposta = await fetch(
-      `https://openlibrary.org/search.json?${parametros}&fields=title,author_name,isbn,cover_i&limit=8`,
+    const r = await fetch(`https://openlibrary.org/search.json?${p}&fields=title,cover_i&limit=4`);
+    if (!r.ok) return [];
+    const json = (await r.json()) as { docs?: Array<{ title?: string; cover_i?: number }> };
+    return (json.docs ?? []).flatMap((d) =>
+      d.cover_i
+        ? [{ url: `https://covers.openlibrary.org/b/id/${d.cover_i}-L.jpg`, titulo: d.title ?? "", fonte: "openlibrary.org" }]
+        : [],
     );
-    if (!resposta.ok) return [];
-    const json = (await resposta.json()) as {
-      docs?: Array<{ title?: string; author_name?: string[]; isbn?: string[]; cover_i?: number }>;
-    };
-    return (json.docs ?? []).flatMap((doc) => {
-      if (!doc.title || !doc.cover_i) return [];
-      return [{
-        titulo: doc.title,
-        autores: doc.author_name ?? [],
-        isbn: doc.isbn ?? [],
-        imagem: `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`,
-      }];
-    });
   } catch {
     return [];
+  }
+}
+
+async function candidatos(e: EntradaT) {
+  const isbn = isbnLimpo(e.isbn);
+  const consulta = `livro ${e.titulo} ${e.autor} ${isbn} capa`.replace(/\s+/g, " ").trim();
+  const [web, ol] = await Promise.all([buscarImagensWeb(consulta), buscarOpenLibrary(e)]);
+  const vistos = new Set<string>();
+  return [...ol, ...web].filter((c) => (vistos.has(c.url) ? false : (vistos.add(c.url), true)));
+}
+
+function urlPermitida(url: string) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return false;
+    const h = u.hostname;
+    if (h === "localhost" || /^(\d+\.){3}\d+$/.test(h) || h.includes(":") || h.endsWith(".local") || h.endsWith(".internal")) return false;
+    return true;
+  } catch {
+    return false;
   }
 }
 
 async function baixarImagem(url: string) {
-  const resposta = await fetch(url, { headers: { Accept: "image/jpeg,image/png,image/webp" } });
-  if (!resposta.ok) return null;
-  const tipo = resposta.headers.get("content-type") ?? "";
-  if (!tipo.startsWith("image/")) return null;
-  const bytes = new Uint8Array(await resposta.arrayBuffer());
-  if (bytes.byteLength < 2_000 || bytes.byteLength > 8_000_000) return null;
-  return { base64: Buffer.from(bytes).toString("base64"), tipo };
+  if (!urlPermitida(url)) return null;
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "image/jpeg,image/png,image/webp,image/*" } });
+    if (!r.ok) return null;
+    const tipo = r.headers.get("content-type") ?? "";
+    if (!tipo.startsWith("image/")) return null;
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    if (bytes.byteLength < 2_000 || bytes.byteLength > 8_000_000) return null;
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { base64: btoa(bin), tipo: tipo.split(";")[0] };
+  } catch {
+    return null;
+  }
 }
 
+/** Lista capas possíveis para a bibliotecária escolher. */
+export const listarCapasLivro = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => Entrada.parse(input))
+  .handler(async ({ data }) => ({ capas: await candidatos(data) }));
+
+/** Baixa a capa escolhida e devolve os bytes para salvar no álbum privado. */
+export const baixarCapaEscolhida = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ url: z.string().url().max(2000) }).parse(input))
+  .handler(async ({ data }) => {
+    const img = await baixarImagem(data.url);
+    if (!img) throw new Error("Não consegui baixar essa imagem. Escolha outra.");
+    return img;
+  });
+
+/** Busca automática (lote): usa a primeira capa que puder ser baixada. */
 export const buscarCapaLivro = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => Entrada.parse(input))
   .handler(async ({ data }) => {
-    const google = await buscarGoogle(data);
-    const candidatos = [...google, ...(await buscarOpenLibrary(data))];
-    for (const candidato of candidatos) {
-      if (!corresponde(candidato, data)) continue;
-      const imagem = await baixarImagem(candidato.imagem);
-      if (imagem) return { encontrada: true as const, ...imagem, fonte: candidato.imagem };
+    for (const c of (await candidatos(data)).slice(0, 4)) {
+      const img = await baixarImagem(c.url);
+      if (img) return { encontrada: true as const, ...img, fonte: c.url };
     }
     return { encontrada: false as const };
   });
